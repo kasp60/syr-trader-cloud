@@ -437,9 +437,9 @@ const processPendingLimitOrders = async (db) => {
     const liquidation = order.direction === "long" ? (entry * BigInt(order.leverage - 1) / leverage) || 1n : entry * BigInt(order.leverage + 1) / leverage;
     const bounds=await getReserveReferenceBounds(db),lock=tradeReserveLock(order.direction,quantity,entry,bounds);
     if(lock<0n||lock>9007199254740991n)continue;
-    const reserve=await db.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(order.marginAssetSymbol).first();
+    const reserve=await db.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(order.marginAssetSymbol).first();
     const required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0),balance=BigInt(reserve?.balanceMinor||0);
-    if(required+lock>balance||reserved!== (required<balance?required:balance))continue;
+    if(required+lock>balance||reserved!== (required<balance?required:balance)||BigInt(reserve?.deficitMinor||0)>0n)continue;
     const tradeId = crypto.randomUUID(), now = new Date().toISOString();
     const result = await db.batch([
       db.prepare("UPDATE platform_reserve_balances SET required_minor=required_minor+?,reserved_minor=reserved_minor+?,updated_at=? WHERE asset_symbol=? AND required_minor=? AND reserved_minor=? AND balance_minor-reserved_minor>=? AND EXISTS(SELECT 1 FROM paper_limit_orders WHERE id=? AND status='pending')").bind(Number(lock),Number(lock),now,order.marginAssetSymbol,Number(required),Number(reserved),Number(lock),order.id),
@@ -679,7 +679,7 @@ const walletApi = async (request, env, url) => {
     await syncPlatformReserve(env.DB);
     const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
     const balance=BigInt(reserve?.balanceMinor||0),required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0);
-    if(required+lock>balance||reserved!==(required<balance?required:balance))
+    if(required+lock>balance||reserved!==(required<balance?required:balance)||BigInt(reserve?.deficitMinor||0)>0n)
       return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±0.5%. يلزم تمويل الاحتياطي أولاً."},409);
     const quantityMicro=Number(quantityBig),marginCents=Number(marginMinor),reserveLock=Number(lock);
     const liquidationPriceMicro=Number((direction==="long"?entry*BigInt(leverage-1)/BigInt(leverage):entry*BigInt(leverage+1)/BigInt(leverage))||1n);
@@ -886,7 +886,7 @@ const walletApi = async (request, env, url) => {
     const requiredSyp=Number(required.SYP),requiredUsd=Number(required.USD);
     if(!Number.isSafeInteger(requiredSyp)||!Number.isSafeInteger(requiredUsd))return json({ok:false,error:"التغطية المطلوبة تتجاوز النطاق المحاسبي"},409);
     const changes=await env.DB.batch([
-      env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,reserved_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,updated_at=? WHERE asset_symbol IN ('SYP','USD') AND (SELECT COUNT(*) FROM platform_reserve_balances WHERE (asset_symbol='SYP' AND balance_minor>=?) OR (asset_symbol='USD' AND balance_minor>=?))=2").bind(requiredSyp,requiredUsd,requiredSyp,requiredUsd,now,requiredSyp,requiredUsd),
+      env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,reserved_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,updated_at=? WHERE asset_symbol IN ('SYP','USD') AND (SELECT COUNT(*) FROM platform_reserve_balances WHERE deficit_minor=0 AND ((asset_symbol='SYP' AND balance_minor>=?) OR (asset_symbol='USD' AND balance_minor>=?)))=2").bind(requiredSyp,requiredUsd,requiredSyp,requiredUsd,now,requiredSyp,requiredUsd),
       env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) SELECT 'syr-usd-syp',?,?,?,?,?,? WHERE changes()=2 ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
       env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?) ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
@@ -1029,7 +1029,7 @@ const walletApi = async (request, env, url) => {
     let result;
     try {
       result=await env.DB.batch([
-        env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=balance_minor+?,updated_at=? WHERE asset_symbol=? AND balance_minor<=9007199254740991-?").bind(amountMinor,now,assetSymbol,amountMinor),
+        env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=balance_minor+MAX(0,?-deficit_minor),deficit_minor=MAX(0,deficit_minor-?),updated_at=? WHERE asset_symbol=? AND balance_minor<=9007199254740991-MAX(0,?-deficit_minor)").bind(amountMinor,amountMinor,now,assetSymbol,amountMinor),
         env.DB.prepare("INSERT INTO platform_reserve_movements(id,asset_symbol,amount_minor,external_reference,note,created_by,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1").bind(id,assetSymbol,amountMinor,externalReference,note,user.id,now),
         env.DB.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,'funding',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),assetSymbol,amountMinor,assetSymbol+":"+externalReference,"تمويل خارجي أضافه المدير: "+note,now)
       ]);
