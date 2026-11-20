@@ -281,6 +281,9 @@ const bytesToBase64 = (bytes) => {
   return btoa(binary);
 };
 
+const MARKET_MAX_DEVIATION_BPS = 50; // Maximum market-price deviation: +/-0.5% around the moving admin reference.
+const MARKET_IMBALANCE_PRESSURE_BPS = 25; // Maximum directional pressure per scheduled tick at a fully one-sided book.
+
 const runScheduledMarketBots = async (db) => {
   await ensurePaperSchema(db);
   const result = await db.prepare(`SELECT b.instrument_id AS instrumentId,b.volatility_bps AS volatilityBps,
@@ -299,18 +302,35 @@ const runScheduledMarketBots = async (db) => {
     const elapsed=Date.now()-started;
     const transitioning=Number.isSafeInteger(target)&&target>0&&Number.isSafeInteger(Number(bot.fromPriceMicro))&&
       Number(bot.fromPriceMicro)>0&&Number.isFinite(started)&&durationMs>=60000&&elapsed>=0&&elapsed<durationMs;
-    let next;
+    const fallbackReference=Number((await db.prepare("SELECT rate*1000000 AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||previous);
+    let reference=target>0?target:fallbackReference;
     if(transitioning){
       const from=BigInt(bot.fromPriceMicro),to=BigInt(target);
-      next=Number(from+(to-from)*BigInt(Math.max(0,elapsed))/BigInt(durationMs));
-    }else{
-      const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
-      const noise=(bytes[0]/4294967295)*2-1;
-      const baseTarget=target>0?target:Number((await db.prepare("SELECT rate*1000000 AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||previous);
-      const reversion=baseTarget>0?Math.max(-300,Math.min(300,Math.round(((baseTarget-previous)/baseTarget)*1200))):0;
-      const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
-      next=Math.max(1,Math.round(previous*(1+(reversion+boundedMove)/10000)));
+      reference=Number(from+(to-from)*BigInt(Math.max(0,elapsed))/BigInt(durationMs));
     }
+
+    // Net open customer exposure is measured in SYP notional. A net-long book
+    // applies downward pressure; a net-short book applies upward pressure.
+    const positions=await db.prepare("SELECT direction,quantity_micro AS quantityMicro FROM paper_trades WHERE instrument_id=? AND status='open'").bind(bot.instrumentId).all();
+    let longNotional=0n,shortNotional=0n;
+    for(const position of (positions.results||[])){
+      const notional=BigInt(position.quantityMicro)*BigInt(previous)/1000000000000n;
+      if(position.direction==="long")longNotional+=notional;
+      else shortNotional+=notional;
+    }
+    const totalNotional=longNotional+shortNotional;
+    const netNotional=longNotional-shortNotional;
+    const imbalanceBps=totalNotional>0n?Number(netNotional*10000n/totalNotional):0;
+    const imbalancePressureBps=Math.round(-imbalanceBps*MARKET_IMBALANCE_PRESSURE_BPS/10000);
+
+    const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
+    const noise=(bytes[0]/4294967295)*2-1;
+    const reversion=reference>0?Math.max(-300,Math.min(300,Math.round(((reference-previous)/reference)*1200))):0;
+    const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
+    const rawNext=Math.max(1,Math.round(previous*(1+(reversion+boundedMove+imbalancePressureBps)/10000)));
+    const lowerBound=Math.max(1,Math.floor(reference*(10000-MARKET_MAX_DEVIATION_BPS)/10000));
+    const upperBound=Math.max(lowerBound,Math.ceil(reference*(10000+MARKET_MAX_DEVIATION_BPS)/10000));
+    const next=Math.max(lowerBound,Math.min(upperBound,rawNext));
     if(!Number.isSafeInteger(next)||next<=0||next===previous)continue;
     const now=new Date().toISOString();
     const batch=await db.batch([
