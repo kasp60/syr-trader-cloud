@@ -233,7 +233,12 @@ export default {
 
     if (url.pathname.startsWith("/api/auth/")) {
       try { return await authApi(request, env, url); }
-      catch {
+      catch (error) {
+        console.error("SYR_TRADER_AUTH_ERROR", {
+          path: url.pathname,
+          method: request.method,
+          message: error instanceof Error ? error.message : String(error)
+        });
         return json({ ok: false, error: "حدث خطأ داخلي، حاول مجدداً" }, 500);
       }
     }
