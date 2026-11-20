@@ -152,7 +152,15 @@
     .close-contract-button:disabled{opacity:.55}
     @media(max-width:480px){.contract-details{grid-template-columns:1fr 1fr}.trade-contract-card{padding:11px}.contract-details>div{padding:8px}.contract-details strong{font-size:12px}}
 
-  </style>
+  
+    /* Mobile chart readability and spacing */
+    @media(max-width:760px){
+      .app-nav{margin-bottom:34px}
+      #tradingWorkspace>.chart-controls{margin-top:20px;padding-top:12px}
+      .chart-controls .chart-control-label{font-size:13px;color:#eaecef}
+      .chart-panel svg{overflow:visible}
+    }
+</style>
 </head>
 <body>
   <header><div class="brand">SYR <span>TRADER</span><small class="brand-powered">Powered by <strong>Kamash</strong></small></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
