@@ -314,8 +314,8 @@ const processPendingLimitOrders = async (db) => {
     const liquidation = order.direction === "long" ? (entry * BigInt(order.leverage - 1) / leverage) || 1n : entry * BigInt(order.leverage + 1) / leverage;
     const tradeId = crypto.randomUUID(), now = new Date().toISOString();
     const result = await db.batch([
-      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?,'open',? FROM paper_limit_orders o WHERE o.id=? AND o.status='pending' AND ((o.direction='long' AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro<=o.limit_price_micro)) OR (o.direction='short' AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro>=o.limit_price_micro)))")
-        .bind(tradeId,order.userId,order.instrumentId,order.direction,Number(quantity),Number(entry),order.leverage,Number(margin),order.marginAssetSymbol,Number(liquidation),now,order.id),
+      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?,'open',? FROM paper_limit_orders o WHERE o.id=? AND o.status='pending' AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro=? AND ((o.direction='long' AND p.price_micro<=o.limit_price_micro) OR (o.direction='short' AND p.price_micro>=o.limit_price_micro)))")
+        .bind(tradeId,order.userId,order.instrumentId,order.direction,Number(quantity),Number(entry),order.leverage,Number(margin),order.marginAssetSymbol,Number(liquidation),now,order.id,Number(order.currentPriceMicro)),
       db.prepare("UPDATE paper_limit_orders SET status='filled',trade_id=?,filled_at=? WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(tradeId,now,order.id,tradeId)
     ]);
     if (Number(result?.[0]?.meta?.changes || 0) > 0 && Number(result?.[1]?.meta?.changes || 0) > 0) filled++;
@@ -580,7 +580,7 @@ const walletApi = async (request, env, url) => {
     const result=await env.DB.batch([
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(marginMinor,now,wallet.id,marginMinor),
       env.DB.prepare("INSERT INTO paper_limit_orders(id,user_id,instrument_id,direction,margin_minor,margin_asset_symbol,leverage,limit_price_micro,status,created_at) SELECT ?,?,?,?,?,?,?,?,'pending',? WHERE changes()=1").bind(orderId,user.id,instrumentId,direction,marginMinor,marginAssetSymbol,leverage,limitPriceMicro,now),
-      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,marginMinor,"paper-limit:"+orderId+":reserve",user.id,"حجز هامش أمر "+(direction==="long"?"شراء":"بيع")+" محدد",orderId)
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,marginMinor,"paper-limit:"+orderId+":reserve",user.id,"حجز هامش أمر "+(direction==="long"?"شراء":"بيع")+" محدد")
     ]);
     if(!Number(result?.[1]?.meta?.changes||0))return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
     await processPendingLimitOrders(env.DB);
