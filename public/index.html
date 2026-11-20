@@ -68,6 +68,14 @@
       .chart-controls{gap:5px}
       .chart-controls button{padding:7px 9px;font-size:12px}
     }
+
+    .performance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+    .performance-card{background:#111820;border:1px solid #2b3139;border-radius:9px;padding:13px;min-width:0}
+    .performance-card span{display:block;color:#aeb6c2;font-size:12px;margin-bottom:7px}
+    .performance-card strong{display:block;color:#eaecef;font-size:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+    .performance-feed{display:grid;gap:8px;margin-top:12px}
+    .performance-feed .ledger-row{background:#111820;border:1px solid #2b3139;border-radius:8px;padding:10px}
+    @media(max-width:760px){.performance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.performance-card strong{font-size:16px}}
   </style>
 </head>
 <body>
@@ -117,6 +125,17 @@
           <div id="walletExchangeMessage" class="message" role="status"></div>
         </section>
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
+        <section class="subpanel" id="performancePanel" aria-live="polite">
+          <h3>أداء التداول والتنبيهات</h3>
+          <p class="muted">ملخص محسوب من صفقاتك المسجلة داخل المنصة، وليس من سوق خارجي.</p>
+          <div class="performance-grid">
+            <div class="performance-card"><span>إجمالي الصفقات المغلقة</span><strong id="perfClosed">—</strong></div>
+            <div class="performance-card"><span>نسبة الصفقات الرابحة</span><strong id="perfWinRate">—</strong></div>
+            <div class="performance-card"><span>صافي الربح/الخسارة بالليرة</span><strong id="perfSypNet">—</strong></div>
+            <div class="performance-card"><span>صافي الربح/الخسارة بالدولار</span><strong id="perfUsdNet">—</strong></div>
+          </div>
+          <h4>آخر النتائج والتنبيهات</h4><div id="performanceFeed" class="performance-feed muted">سيظهر ملخص الصفقات بعد تحميل بيانات التداول.</div>
+        </section>
         </section>
         <section id="page-profile" class="app-page">
         <section class="subpanel">
@@ -498,9 +517,33 @@
       });
     }catch(error){container.textContent=error.message;}
   };
+  const renderTradingInsights = data => {
+    const closed=Array.isArray(data.closedTrades)?data.closedTrades:[];
+    const wins=closed.filter(t=>Number(t.pnlCents)>0).length;
+    const netFor=symbol=>closed.filter(t=>t.marginAssetSymbol===symbol).reduce((sum,t)=>sum+Number(t.pnlCents||0),0)/(symbol==="USD"?100:1);
+    const syp=netFor("SYP"),usd=netFor("USD");
+    const fmt=(n,decimals)=>n.toLocaleString("en-US",{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+    const set=(id,value)=>{const node=$(id);if(node)node.textContent=value;};
+    set("perfClosed",String(closed.length));
+    set("perfWinRate",closed.length?fmt(wins/closed.length*100,1)+"%":"—");
+    set("perfSypNet",(syp>0?"+":"")+fmt(syp,0)+" ليرة");
+    set("perfUsdNet",(usd>0?"+":"")+fmt(usd,2)+" دولار");
+    const feed=$("performanceFeed");if(!feed)return;feed.replaceChildren();
+    const events=[...closed].sort((a,b)=>String(b.closedAt||"").localeCompare(String(a.closedAt||""))).slice(0,6);
+    if(!events.length){feed.textContent="لا توجد نتائج مغلقة أو تنبيهات بعد.";return;}
+    events.forEach(t=>{
+      const liquidated=t.status==="liquidated",asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+      const pnl=Number(t.pnlCents||0)/(t.marginAssetSymbol==="USD"?100:1);
+      const label=(t.direction==="long"?"شراء":"بيع")+" · "+(liquidated?"تصفية تلقائية": "إغلاق صفقة");
+      const result=(pnl>0?"+":"")+fmt(pnl,t.marginAssetSymbol==="USD"?2:0)+" "+asset;
+      addTextRow(feed,label+" · "+new Date(t.closedAt).toLocaleString("ar"),"النتيجة: "+result);
+    });
+  };
+
   const loadPaperMarket = async () => {
     try {
       const data = await api("/api/market/board", { headers: {} });
+      renderTradingInsights(data);
       $("paperCash").textContent = "تداول بالمحافظ";
       const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument"), chartSelect=$("chartInstrument");
       market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren(); chartSelect.replaceChildren();
