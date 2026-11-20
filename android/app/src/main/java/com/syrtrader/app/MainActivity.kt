@@ -430,7 +430,7 @@ class MainActivity : Activity() {
             .setPositiveButton("إرسال الطلب") { _, _ ->
                 val whole = amount.text.toString().trim().toLongOrNull()
                 val payout = details.text.toString().trim()
-                if (whole == null || whole <= 0 || whole > 10000000000L || payout.length < 5) {
+                if (whole == null || whole <= 0 || whole > 10000000L || payout.length < 5) {
                     android.widget.Toast.makeText(this, "تحقق من المبلغ وبيانات الاستلام", android.widget.Toast.LENGTH_LONG).show()
                 } else sendWalletAction(cookie, "/api/wallet/withdrawal",
                     JSONObject().put("amount", whole * 100L).put("payoutDetails", payout), "تم إرسال طلب السحب")
@@ -476,7 +476,7 @@ class MainActivity : Activity() {
             .setPositiveButton("تحويل") { _, _ ->
                 val member = code.text.toString().trim()
                 val whole = amount.text.toString().trim().toLongOrNull()
-                if (!member.matches(Regex("[0-9]{10}")) || whole == null || whole <= 0 || whole > 10000000000L) {
+                if (!member.matches(Regex("[0-9]{10}")) || whole == null || whole <= 0 || whole > 10000000L) {
                     android.widget.Toast.makeText(this, "تحقق من رقم العضوية والمبلغ", android.widget.Toast.LENGTH_LONG).show()
                 } else sendWalletAction(cookie, "/api/wallet/transfer",
                     JSONObject().put("memberCode", member).put("amount", whole * 100L), "تم تنفيذ التحويل الداخلي")
