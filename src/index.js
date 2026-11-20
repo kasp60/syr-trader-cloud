@@ -336,9 +336,9 @@ const settleLiquidatedTrades = async (db) => {
     p.price_micro AS currentPriceMicro FROM paper_trades t JOIN market_prices p ON p.instrument_id=t.instrument_id WHERE t.status='open'`).all();
   let liquidated=0;
   for(const t of (rows.results||[])){
-    const price=Number(t.currentPriceMicro),triggered=t.direction==="long"?price<=Number(t.liquidationPriceMicro):price>=Number(t.liquidationPriceMicro);
+    const executablePrice=Number(marketQuote(t.currentPriceMicro,t.direction==="long"?"bid":"ask")),triggered=t.direction==="long"?executablePrice<=Number(t.liquidationPriceMicro):executablePrice>=Number(t.liquidationPriceMicro);
     if(!triggered)continue;
-    const result=await db.prepare("UPDATE paper_trades SET status='liquidated',closed_at=?,exit_price_micro=?,pnl_cents=-margin_cents WHERE id=? AND user_id=? AND status='open'").bind(new Date().toISOString(),price,t.id,t.userId).run();
+    const result=await db.prepare("UPDATE paper_trades SET status='liquidated',closed_at=?,exit_price_micro=?,pnl_cents=-margin_cents WHERE id=? AND user_id=? AND status='open'").bind(new Date().toISOString(),executablePrice,t.id,t.userId).run();
     if(Number(result.meta?.changes||0)>0)liquidated++;
   }
   return liquidated;
