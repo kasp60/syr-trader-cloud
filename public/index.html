@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="SYR TRADER - منصة تداول">
+  <title>SYR TRADER</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--line:#26364c;--text:#edf3fb;--muted:#9aabc0;--accent:#36c9a0}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#172d3c 0,transparent 35%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+    header{display:flex;align-items:center;justify-content:space-between;padding:20px max(5vw,18px);border-bottom:1px solid var(--line)}
+    .brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}.status{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:7px 11px;border-radius:30px}
+    main{max-width:1080px;margin:56px auto;padding:0 20px}.eyebrow{color:var(--accent);font-size:13px;font-weight:700}
+    h1{font-size:clamp(30px,6vw,54px);margin:12px 0}.intro{color:var(--muted);line-height:1.9;max-width:650px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:34px}
+    .card{background:linear-gradient(145deg,#162337,#101a29);border:1px solid var(--line);border-radius:18px;padding:22px;min-height:145px}
+    .card h2{font-size:17px;margin:0 0 12px}.card p{color:var(--muted);font-size:14px;line-height:1.8;margin:0}
+    .notice{margin-top:24px;padding:16px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:14px;line-height:1.8}
+    footer{max-width:1080px;margin:60px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
+  </style>
+</head>
+<body>
+  <header><div class="brand">SYR <span>TRADER</span></div><div class="status">الخادم متصل</div></header>
+  <main>
+    <div class="eyebrow">منصة التداول</div>
+    <h1>مرحباً بك في SYR TRADER</h1>
+    <p class="intro">يجري تجهيز المنصة وربط خدمات الحسابات والأسواق والعمليات المالية. ستظهر بيانات السوق والأرصدة بعد إعداد الخدمات والتحقق منها.</p>
+    <section class="grid" aria-label="أقسام المنصة">
+      <article class="card"><h2>الأسواق</h2><p>واجهة عرض الأسواق والأسعار ستُفعّل بعد ربط مصدر بيانات موثوق.</p></article>
+      <article class="card"><h2>المحفظة</h2><p>لن يتم عرض أو إنشاء أرصدة مالية قبل إعداد قاعدة البيانات وسجل العمليات الآمن.</p></article>
+      <article class="card"><h2>الحساب</h2><p>سيتم تجهيز التسجيل وتسجيل الدخول وإدارة الجلسات والصلاحيات.</p></article>
+    </section>
+    <div class="notice">حالة التداول: غير مفعّل. لا توجد أوامر تداول أو إيداعات أو سحوبات حقيقية في هذه المرحلة.</div>
+  </main>
+  <footer>SYR TRADER · Cloudflare Workers</footer>
+</body>
+</html>
