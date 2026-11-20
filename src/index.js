@@ -561,8 +561,29 @@ const authApi = async (request, env, url) => {
     try { body = await readJson(request); } catch { return json({ ok: false, error: "Invalid request body" }, 400); }
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
-    if (!email || !password || email.length > 254 || password.length > 128) {
+    if (!email || email.length > 254 || password.length > 128) {
       return json({ ok: false, error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" }, 400);
+    }
+    const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+    const loginKey = await sha256(clientIp + "|" + email);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS auth_login_limits (
+      login_key TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0,
+      window_started_at INTEGER NOT NULL, blocked_until INTEGER
+    )`).run();
+    const limit = await env.DB.prepare(`INSERT INTO auth_login_limits
+      (login_key,attempts,window_started_at,blocked_until) VALUES (?,1,?,NULL)
+      ON CONFLICT(login_key) DO UPDATE SET
+        attempts=CASE WHEN auth_login_limits.blocked_until>? THEN auth_login_limits.attempts
+          WHEN auth_login_limits.window_started_at<=? THEN 1 ELSE auth_login_limits.attempts+1 END,
+        window_started_at=CASE WHEN auth_login_limits.blocked_until>? THEN auth_login_limits.window_started_at
+          WHEN auth_login_limits.window_started_at<=? THEN excluded.window_started_at ELSE auth_login_limits.window_started_at END,
+        blocked_until=CASE WHEN auth_login_limits.blocked_until>? THEN auth_login_limits.blocked_until
+          WHEN auth_login_limits.window_started_at<=? THEN NULL
+          WHEN auth_login_limits.attempts+1>=10 THEN ? ELSE auth_login_limits.blocked_until END
+      RETURNING attempts,blocked_until`).bind(loginKey,nowSeconds,nowSeconds,nowSeconds-900,nowSeconds,nowSeconds-900,nowSeconds,nowSeconds-900,nowSeconds+900).first();
+    if (Number(limit?.blocked_until || 0) > nowSeconds) {
+      return json({ ok: false, error: "محاولات دخول كثيرة؛ حاول بعد 15 دقيقة" }, 429);
     }
     const user = await env.DB.prepare(
       "SELECT id, email, password_hash, display_name, role, status FROM users WHERE email = ? LIMIT 1"
@@ -571,6 +592,7 @@ const authApi = async (request, env, url) => {
       return json({ ok: false, error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" }, 401);
     }
     if (user.status !== "active") return json({ ok: false, error: "الحساب غير نشط، يرجى مراجعة الإدارة" }, 403);
+    await env.DB.prepare("DELETE FROM auth_login_limits WHERE login_key=?").bind(loginKey).run();
     const token = await createSession(env.DB, user.id);
     return json(
       { ok: true, user: { id: user.id, email: user.email, displayName: user.display_name, role: user.role } },
