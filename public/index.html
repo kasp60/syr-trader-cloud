@@ -567,24 +567,61 @@
     const stats=$("chartStats"),indicator=$("chartIndicators");
     const valid=latestChartPoints.map((p,i)=>({price:Number(p.priceMicro)/1000000,time:Number.isFinite(Date.parse(p.createdAt))?Date.parse(p.createdAt):i*60000})).filter(p=>Number.isFinite(p.price)&&p.price>0);
     if(!valid.length){addText(550,280,"لا توجد حركة مسجلة بعد","middle",19);if(stats)stats.innerHTML="<div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div>";if(indicator)indicator.querySelectorAll("strong").forEach(x=>x.textContent="—");return;}
+    // Build continuous OHLC candles, reject implausible jumps, and fill empty intervals.
+    const ordered=[...valid].sort((a,b)=>a.time-b.time);
     const buckets=new Map();
-    let previousPrice=valid[0].price;
-    valid.forEach(p=>{const key=Math.floor(p.time/chartRangeMs)*chartRangeMs;let b=buckets.get(key);if(!b){b={time:key,open:previousPrice,high:Math.max(previousPrice,p.price),low:Math.min(previousPrice,p.price),close:p.price,count:0};buckets.set(key,b);}b.high=Math.max(b.high,p.price,b.open);b.low=Math.min(b.low,p.price,b.open);b.close=p.price;b.count++;previousPrice=p.price;});
-    let candles=Array.from(buckets.values()).sort((a,b)=>a.time-b.time).slice(-chartVisibleCount);
+    let previousAcceptedPrice=null;
+    const MAX_SINGLE_MOVE_RATIO=0.08;
+    ordered.forEach(p=>{
+      if(previousAcceptedPrice!==null && Math.abs(p.price/previousAcceptedPrice-1)>MAX_SINGLE_MOVE_RATIO)return;
+      const key=Math.floor(p.time/chartRangeMs)*chartRangeMs;
+      let b=buckets.get(key);
+      if(!b){
+        const open=previousAcceptedPrice??p.price;
+        b={time:key,open,high:Math.max(open,p.price),low:Math.min(open,p.price),close:p.price,count:0};
+        buckets.set(key,b);
+      }
+      b.high=Math.max(b.high,p.price,b.open);
+      b.low=Math.min(b.low,p.price,b.open);
+      b.close=p.price;
+      b.count++;
+      previousAcceptedPrice=p.price;
+    });
+    const observed=[...buckets.values()].sort((a,b)=>a.time-b.time);
+    const continuous=[];
+    for(const candle of observed){
+      if(continuous.length){
+        const previous=continuous[continuous.length-1];
+        let gap=previous.time+chartRangeMs;
+        // Avoid runaway allocation if the source contains a very large time discontinuity.
+        let inserted=0;
+        while(gap<candle.time && inserted<chartVisibleCount*5){
+          continuous.push({time:gap,open:previous.close,high:previous.close,low:previous.close,close:previous.close,count:0});
+          gap+=chartRangeMs;
+          inserted++;
+        }
+      }
+      continuous.push(candle);
+    }
+    let candles=continuous.slice(-chartVisibleCount);
     const vals=candles.map(x=>x.close),last=vals[vals.length-1],first=vals[0],hi=Math.max(...candles.map(x=>x.high)),lo=Math.min(...candles.map(x=>x.low));
     const range=Math.max(hi-lo,Math.abs(hi)*0.00015,1),left=62,right=1055,top=28,bottom=505,width=right-left,height=bottom-top;
     const min=lo-range*.10,max=hi+range*.10,y=v=>bottom-(v-min)/(max-min)*height;
     for(let i=0;i<=5;i++){const yy=top+i*height/5,v=max-(max-min)*i/5;svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#26313b","stroke-width":1}));addText(left-12,yy+4,fmt(v));}
     const slot=width/Math.max(1,candles.length),bodyW=Math.max(3,Math.min(13,slot*.62));
-    const linePoints=candles.map((c,i)=>({x:left+(i+.5)*slot,y:y(c.close),c}));
-    if(linePoints.length){
-      const lineD=linePoints.map((p,i)=>(i?"L ":"M ")+p.x.toFixed(2)+" "+p.y.toFixed(2)).join(" ");
-      const areaD=lineD+" L "+linePoints[linePoints.length-1].x.toFixed(2)+" "+bottom+" L "+linePoints[0].x.toFixed(2)+" "+bottom+" Z";
-      const defs=el("defs",{}),grad=el("linearGradient",{id:"marketLineFill",x1:"0",y1:"0",x2:"0",y2:"1"});grad.appendChild(el("stop",{offset:"0%","stop-color":"#27d6a5","stop-opacity":".28"}));grad.appendChild(el("stop",{offset:"100%","stop-color":"#27d6a5","stop-opacity":"0"}));defs.appendChild(grad);svg.appendChild(defs);
-      svg.appendChild(el("path",{d:areaD,fill:"url(#marketLineFill)",stroke:"none"}));
-      const pricePath=el("path",{d:lineD,fill:"none",stroke:"#27d6a5","stroke-width":3,"stroke-linejoin":"round","stroke-linecap":"round"});svg.appendChild(pricePath);
-      linePoints.forEach(p=>{const hit=el("circle",{cx:p.x,cy:p.y,r:2.5,fill:"#27d6a5",opacity:".0"}),title=el("title",{});title.textContent="الوقت: "+new Date(p.c.time).toLocaleString("ar")+" | السعر: "+fmt(p.c.close)+" ليرة";hit.appendChild(title);svg.appendChild(hit);});
-    }
+    candles.forEach((c,i)=>{
+      const x=left+(i+.5)*slot;
+      const up=c.close>=c.open,color=up?"#27d6a5":"#ff7185";
+      const openY=y(c.open),closeY=y(c.close),highY=y(c.high),lowY=y(c.low);
+      svg.appendChild(el("line",{x1:x,y1:highY,x2:x,y2:lowY,stroke:color,"stroke-width":1.5}));
+      const rawTop=Math.min(openY,closeY),rawHeight=Math.abs(closeY-openY);
+      const bodyHeight=Math.max(2,rawHeight),bodyTop=rawTop-(bodyHeight-rawHeight)/2;
+      svg.appendChild(el("rect",{x:x-bodyW/2,y:bodyTop,width:bodyW,height:bodyHeight,fill:color,stroke:color,"stroke-width":1,rx:0.5}));
+      const hit=el("rect",{x:x-bodyW/2-2,y:Math.min(highY,bodyTop)-3,width:bodyW+4,height:Math.max(8,Math.max(lowY,bodyTop+bodyHeight)-Math.min(highY,bodyTop)+6),fill:"transparent"});
+      const title=el("title",{});
+      title.textContent="الوقت: "+new Date(c.time).toLocaleString("ar")+" | فتح: "+fmt(c.open)+" | أعلى: "+fmt(c.high)+" | أدنى: "+fmt(c.low)+" | إغلاق: "+fmt(c.close)+" ليرة";
+      hit.appendChild(title);svg.appendChild(hit);
+    });
     const moving=(period)=>candles.map((c,i)=>{if(i+1<period)return null;const slice=vals.slice(i+1-period,i+1);return slice.reduce((a,b)=>a+b,0)/period;});
     const drawLine=(series,color)=>{let d="";series.forEach((v,i)=>{if(v===null)return;const x=left+(i+.5)*slot,yy=y(v);d+=(d?" L ":"M ")+x.toFixed(2)+" "+yy.toFixed(2);});if(d)svg.appendChild(el("path",{d,fill:"none",stroke:color,"stroke-width":2.5,"stroke-linejoin":"round","stroke-linecap":"round"}));};
     const sma20=moving(20),sma50=moving(50);drawLine(sma20,"#f6c85f");drawLine(sma50,"#65aaff");
