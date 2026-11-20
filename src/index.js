@@ -196,13 +196,18 @@ const ensurePaperSchema = async (db) => {
         status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','liquidated')),
         opened_at TEXT NOT NULL,closed_at TEXT,exit_price_micro INTEGER,pnl_cents INTEGER
       )`),
-      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at,closed_at,exit_price_micro,pnl_cents) SELECT id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,CASE WHEN leverage BETWEEN 1 AND 20 THEN leverage ELSE 1 END,margin_cents,status,opened_at,closed_at,exit_price_micro,pnl_cents FROM paper_trades_legacy"),
+      db.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+COALESCE((SELECT SUM(margin_cents) FROM paper_trades_legacy WHERE user_id=paper_accounts.user_id AND status='open'),0) WHERE EXISTS(SELECT 1 FROM paper_trades_legacy WHERE user_id=paper_accounts.user_id AND status='open')"),
+      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at,closed_at,exit_price_micro,pnl_cents) SELECT id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,CASE WHEN leverage BETWEEN 1 AND 20 THEN leverage ELSE 1 END,margin_cents,CASE WHEN status='open' THEN 'closed' ELSE status END,opened_at,CASE WHEN status='open' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE closed_at END,CASE WHEN status='open' THEN entry_price_micro ELSE exit_price_micro END,CASE WHEN status='open' THEN 0 ELSE pnl_cents END FROM paper_trades_legacy"),
       db.prepare("DROP TABLE paper_trades_legacy"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_trades_user_status ON paper_trades(user_id,status,opened_at)")
     ]);
   }
   const tradeColumns=await db.prepare("PRAGMA table_info(paper_trades)").all();
-  if(!(tradeColumns.results||[]).some(c=>c.name==="margin_asset_symbol"))await db.prepare("ALTER TABLE paper_trades ADD COLUMN margin_asset_symbol TEXT NOT NULL DEFAULT 'SYP'").run();
+  if(!(tradeColumns.results||[]).some(c=>c.name==="margin_asset_symbol")){
+    await db.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+COALESCE((SELECT SUM(margin_cents) FROM paper_trades WHERE user_id=paper_accounts.user_id AND status='open'),0) WHERE EXISTS(SELECT 1 FROM paper_trades WHERE user_id=paper_accounts.user_id AND status='open')").run();
+    await db.prepare("UPDATE paper_trades SET status='closed',closed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),exit_price_micro=entry_price_micro,pnl_cents=0 WHERE status='open'").run();
+    await db.prepare("ALTER TABLE paper_trades ADD COLUMN margin_asset_symbol TEXT NOT NULL DEFAULT 'SYP'").run();
+  }
   if(!(tradeColumns.results||[]).some(c=>c.name==="liquidation_price_micro"))await db.prepare("ALTER TABLE paper_trades ADD COLUMN liquidation_price_micro INTEGER NOT NULL DEFAULT 1").run();
 };
 
@@ -484,7 +489,7 @@ const walletApi = async (request, env, url) => {
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
     const marginAssetSymbol=direction==="long"?"SYP":"USD";
     const marginBig=direction==="long"
-      ? (BigInt(instrument.priceMicro)*BigInt(quantityMicro)+10000000000n*BigInt(leverage)-1n)/(10000000000n*BigInt(leverage))
+      ? (BigInt(instrument.priceMicro)*BigInt(quantityMicro)+1000000000000n*BigInt(leverage)-1n)/(1000000000000n*BigInt(leverage))
       : (BigInt(quantityMicro)*100n+1000000n*BigInt(leverage)-1n)/(1000000n*BigInt(leverage));
     if(marginBig<=0n||marginBig>9007199254740991n)return json({ok:false,error:"الهامش خارج النطاق"},400);
     const marginCents=Number(marginBig),entry=BigInt(instrument.priceMicro);
@@ -515,7 +520,7 @@ const walletApi = async (request, env, url) => {
     const price=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first();
     if(!price)return json({ok:false,error:"السعر الحالي غير متاح"},409);
     const delta=BigInt(price.priceMicro)-BigInt(trade.entryPriceMicro);
-    const rawPnl=trade.direction==="long"?delta*BigInt(trade.quantityMicro)/10000000000n:BigInt(trade.quantityMicro)*(-delta)*100n/(BigInt(trade.entryPriceMicro)*1000000n);
+    const rawPnl=trade.direction==="long"?delta*BigInt(trade.quantityMicro)/1000000000000n:BigInt(trade.quantityMicro)*(-delta)*100n/(BigInt(trade.entryPriceMicro)*1000000n);
     const margin=BigInt(trade.marginCents),pnl=rawPnl < -margin ? -margin : rawPnl;
     const safePnl=pnl>9007199254740991n-margin?9007199254740991n-margin:pnl;
     const pnlCents=Number(safePnl),releaseCents=Number(margin+safePnl),now=new Date().toISOString();
