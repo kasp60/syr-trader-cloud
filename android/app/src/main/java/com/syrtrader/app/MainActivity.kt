@@ -588,6 +588,38 @@ class MainActivity : Activity() {
                     val sell = actionButton("بيع — هامش بالدولار")
                     card.addView(sell, fieldParams())
                     sell.setOnClickListener { submit("short", sell) }
+                    val limitTitle = text("أمر معلّق بسعر محدد", 17, teal, true)
+                    limitTitle.gravity = Gravity.RIGHT
+                    limitTitle.setPadding(0, dp(20), 0, dp(8))
+                    card.addView(limitTitle, match())
+                    val limitPrice = input("السعر المطلوب بالليرة", false)
+                    limitPrice.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    card.addView(limitPrice, fieldParams())
+                    val limitButton = actionButton("وضع أمر معلّق للشراء")
+                    card.addView(limitButton, fieldParams())
+                    limitButton.setOnClickListener {
+                        val amount = margin.text.toString().trim().toDoubleOrNull()
+                        val lev = leverage.text.toString().trim().toIntOrNull()
+                        val target = limitPrice.text.toString().trim().toDoubleOrNull()
+                        if (amount == null || amount <= 0 || lev == null || lev !in 1..20 || target == null || target <= 0 || (directionLongInvalid(amount))) {
+                            result.text = "تحقق من الهامش والرافعة والسعر المحدد."
+                            return@setOnClickListener
+                        }
+                        limitButton.isEnabled = false
+                        executor.execute {
+                            try {
+                                val payload = JSONObject().put("instrumentId", instrument.optString("id"))
+                                    .put("direction", "long").put("margin", amount).put("leverage", lev).put("limitPrice", target)
+                                val response = request("POST", "/api/paper/limit-order", payload.toString(), cookie)
+                                runOnUiThread {
+                                    result.text = "تم تسجيل الأمر المعلّق: ${response.optString("orderId")}"
+                                    limitButton.isEnabled = true
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.text = e.message ?: "تعذر تسجيل الأمر"; limitButton.isEnabled = true }
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
@@ -685,13 +717,57 @@ class MainActivity : Activity() {
                     content.removeAllViews()
                     val open = board.optJSONArray("openTrades")
                     val closed = board.optJSONArray("closedTrades")
+                    val pending = board.optJSONArray("limitOrders")
                     addTradeSection(content, "الصفقات المفتوحة", open, true, cookie)
                     addTradeSection(content, "الصفقات المغلقة", closed, false, cookie)
+                    addLimitOrdersSection(content, pending, cookie)
                 }
             } catch (e: Exception) {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
             }
         }
+    }
+
+    private fun addLimitOrdersSection(content: LinearLayout, rows: org.json.JSONArray?, cookie: String) {
+        val section = card()
+        val title = text("الأوامر المعلّقة", 18, teal, true)
+        title.gravity = Gravity.RIGHT
+        section.addView(title, match())
+        val count = rows?.length() ?: 0
+        if (count == 0) {
+            val empty = text("لا توجد أوامر معلّقة", 13, muted)
+            empty.gravity = Gravity.RIGHT
+            section.addView(empty, match())
+        } else for (i in 0 until minOf(count, 30)) {
+            val item = rows?.optJSONObject(i) ?: continue
+            val direction = if (item.optString("direction") == "long") "شراء" else "بيع"
+            val price = item.optLong("limitPriceMicro") / 1000000.0
+            val margin = item.optLong("marginMinor") / 100.0
+            val row = text("$direction • سعر ${String.format("%.2f", price)} ليرة • هامش ${String.format("%.2f", margin)} ${item.optString("marginAssetSymbol")}", 13, Color.WHITE)
+            row.gravity = Gravity.RIGHT
+            row.setPadding(0, dp(12), 0, dp(7))
+            section.addView(row, match())
+            val cancel = actionButton("إلغاء الأمر")
+            section.addView(cancel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(8)
+            })
+            cancel.setOnClickListener {
+                cancel.isEnabled = false
+                executor.execute {
+                    try {
+                        request("POST", "/api/paper/limit-order-cancel",
+                            JSONObject().put("orderId", item.optString("id")).toString(), cookie)
+                        runOnUiThread { loadPositions(cookie) }
+                    } catch (e: Exception) {
+                        runOnUiThread { cancel.isEnabled = true; cancel.text = e.message ?: "تعذر إلغاء الأمر" }
+                    }
+                }
+            }
+        }
+        content.addView(section, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(12)
+        })
     }
 
     private fun addTradeSection(content: LinearLayout, titleText: String, rows: org.json.JSONArray?, isOpen: Boolean, cookie: String) {
