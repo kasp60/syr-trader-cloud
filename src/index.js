@@ -1,3 +1,5 @@
+import { marketQuote, tradeReserveLock } from "./reserve-risk.js";
+
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
     status,
@@ -367,15 +369,6 @@ const runScheduledMarketBots = async (db) => {
 };
 
 
-const MARKET_SPREAD_BPS = 10; // 0.10% per side; 0.20% round-trip spread
-const marketQuote = (midPrice, side) => {
-  const mid = BigInt(midPrice);
-  const factor = side === "ask" ? 10000n + BigInt(MARKET_SPREAD_BPS) : 10000n - BigInt(MARKET_SPREAD_BPS);
-  const scaled = mid * factor;
-  return side === "ask" ? (scaled + 9999n) / 10000n : scaled / 10000n;
-};
-
-
 const getReserveReferenceBounds = async (db, targetOverride = null) => {
   const row=await db.prepare("SELECT p.price_micro AS priceMicro,t.target_price_micro AS targetPriceMicro,t.from_price_micro AS fromPriceMicro,t.transition_started_at AS transitionStartedAt,t.transition_seconds AS transitionSeconds FROM market_prices p LEFT JOIN market_price_targets t ON t.instrument_id=p.instrument_id WHERE p.instrument_id='syr-usd-syp'").first();
   const fallback=Number((await db.prepare("SELECT rate*1000000 AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||row?.priceMicro||0);
@@ -648,8 +641,15 @@ const walletApi = async (request, env, url) => {
       return json({ok:false,error:"السعر غير صحيح"},400);
     const priceMicro=Math.round(price*1000000);
     if (!Number.isSafeInteger(priceMicro)||priceMicro<=0) return json({ok:false,error:"دقة السعر غير مقبولة"},400);
-    const exists=await env.DB.prepare("SELECT id FROM market_instruments WHERE id=? AND is_active=1").bind(instrumentId).first();
+    const exists=await env.DB.prepare("SELECT id,symbol FROM market_instruments WHERE id=? AND is_active=1").bind(instrumentId).first();
     if(!exists)return json({ok:false,error:"الأداة غير موجودة"},404);
+    if(exists.symbol==="USD/SYP"){
+      const bounds=await getReserveReferenceBounds(env.DB);
+      const lower=BigInt(Math.floor(bounds.minReference))*9950n/10000n;
+      const upper=(BigInt(Math.ceil(bounds.maxReference))*10050n+9999n)/10000n;
+      if(BigInt(priceMicro)<lower||BigInt(priceMicro)>upper)
+        return json({ok:false,error:"السعر اليدوي يجب أن يبقى ضمن نطاق ±0.5% من السعر المرجعي الذي حددته الإدارة."},409);
+    }
     await env.DB.prepare(`INSERT INTO market_prices (instrument_id,price_micro,updated_by,updated_at)
       VALUES (?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,
       updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
@@ -787,8 +787,8 @@ const walletApi = async (request, env, url) => {
     const reservePnl=BigInt(pnlCents),payout=reservePnl>0n?reservePnl:0n,gain=reservePnl<0n?-reservePnl:0n,release=BigInt(lock);
     const results=await env.DB.batch([
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND balance_minor<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,wallet.id,releaseCents,tradeId,user.id),
-      env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+? WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND changes()=1 AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')")
-        .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(gain),Number(gain),Number(payout),Number(payout),Number(release),Number(release),now,trade.marginAssetSymbol,tradeId,user.id),
+      env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+MAX(0,?-deficit_minor) WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=CASE WHEN ?>0 THEN MAX(0,deficit_minor-?) ELSE deficit_minor+MAX(0,?-balance_minor) END,reserved_minor=MIN(CASE WHEN ?>0 THEN balance_minor+MAX(0,?-deficit_minor) WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,MAX(0,reserved_minor-MIN(reserved_minor,?))),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND changes()=1 AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')")
+        .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(gain),Number(gain),Number(payout),Number(gain),Number(gain),Number(payout),Number(payout),Number(release),Number(release),now,trade.marginAssetSymbol,tradeId,user.id),
       env.DB.prepare("UPDATE paper_trades SET status='closed',closed_at=?,exit_price_micro=?,pnl_cents=? WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,Number(exitPrice),pnlCents,tradeId,user.id),
       env.DB.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1")
         .bind(crypto.randomUUID(),trade.marginAssetSymbol,pnlCents>0?"trade_payout":"trade_gain",Number(gain-payout),tradeId,pnlCents>0?"دفع ربح الصفقة":"تسجيل نتيجة الصفقة لصالح الاحتياطي",now),
@@ -900,8 +900,8 @@ const walletApi = async (request, env, url) => {
     const changes=await env.DB.batch([
       env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,reserved_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,updated_at=? WHERE asset_symbol IN ('SYP','USD') AND (SELECT COUNT(*) FROM platform_reserve_balances WHERE deficit_minor=0 AND ((asset_symbol='SYP' AND balance_minor>=?) OR (asset_symbol='USD' AND balance_minor>=?)))=2").bind(requiredSyp,requiredUsd,requiredSyp,requiredUsd,now,requiredSyp,requiredUsd),
       env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) SELECT 'syr-usd-syp',?,?,?,?,?,? WHERE changes()=2 ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
-      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
-      env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?) ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
+      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) SELECT 'syr-usd-syp',1,80,0,?,? WHERE changes()=1 ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
+      env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) SELECT 'usd-syp','USD','SYP',?,?,? WHERE changes()=1 ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
     ]);
     if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±0.5%. موّل الاحتياطي أولاً."},409);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
