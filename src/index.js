@@ -198,7 +198,6 @@ const walletApi = async (request, env, url) => {
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
         UNIQUE(base_symbol, quote_symbol)
       )`),
-      env.DB.prepare("INSERT OR IGNORE INTO exchange_rates (id,base_symbol,quote_symbol,rate) VALUES ('usd-syp','USD','SYP',0)")
     ]);
     const rows = await env.DB.prepare(
       `SELECT w.id AS walletId, u.email, u.display_name AS displayName,
@@ -388,7 +387,6 @@ const authApi = async (request, env, url) => {
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
         UNIQUE(base_symbol, quote_symbol)
       )`),
-      env.DB.prepare("INSERT OR IGNORE INTO exchange_rates (id, base_symbol, quote_symbol, rate) VALUES ('usd-syp','USD','SYP',0)")
     ]);
     const wallets = await env.DB.prepare(
       `SELECT a.name AS assetName, a.symbol, w.id AS walletId, w.balance_minor AS balanceMinor
