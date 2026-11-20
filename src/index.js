@@ -393,6 +393,8 @@ const walletApi = async (request, env, url) => {
     return json({ok:true,points:(rows.results||[]).reverse()});
   }
   if (url.pathname === "/api/market/board" && request.method === "GET") {
+    await processPendingLimitOrders(env.DB);
+    await settleLiquidatedTrades(env.DB);
     const [market, account, positions, orders, limitOrders] = await Promise.all([
       env.DB.prepare(`SELECT i.id,i.symbol,i.name,i.quote_symbol AS quoteSymbol,p.price_micro AS priceMicro,p.updated_at AS updatedAt,COALESCE(b.enabled,0) AS botEnabled
         FROM market_instruments i LEFT JOIN market_prices p ON p.instrument_id=i.id LEFT JOIN market_bots b ON b.instrument_id=i.id
@@ -407,8 +409,6 @@ const walletApi = async (request, env, url) => {
         WHERE o.user_id=? AND i.symbol='USD/SYP' ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all(),
       env.DB.prepare("SELECT o.id,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,o.created_at AS createdAt,i.symbol FROM paper_limit_orders o JOIN market_instruments i ON i.id=o.instrument_id WHERE o.user_id=? AND o.status='pending' ORDER BY o.created_at DESC LIMIT 100").bind(user.id).all()
     ]);
-    await processPendingLimitOrders(env.DB);
-    await settleLiquidatedTrades(env.DB);
     const [openTrades,closedTrades,walletRows]=await Promise.all([
       env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,
         t.leverage,t.margin_cents AS marginCents,t.margin_asset_symbol AS marginAssetSymbol,
@@ -599,8 +599,8 @@ const walletApi = async (request, env, url) => {
     if(!wallet)return json({ok:false,error:"محفظة الأمر غير موجودة"},409);
     const now=new Date().toISOString(),amount=Number(order.marginMinor);
     const result=await env.DB.batch([
-      env.DB.prepare("UPDATE paper_limit_orders SET status='cancelled',cancelled_at=? WHERE id=? AND user_id=? AND status='pending'").bind(now,orderId,user.id),
-      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND changes()=1 AND balance_minor<=9007199254740991-?").bind(amount,now,wallet.id,amount),
+      env.DB.prepare("UPDATE paper_limit_orders SET status='cancelled',cancelled_at=? WHERE id=? AND user_id=? AND status='pending' AND EXISTS(SELECT 1 FROM wallets WHERE id=? AND balance_minor<=9007199254740991-?)").bind(now,orderId,user.id,wallet.id,amount),
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND changes()=1").bind(amount,now,wallet.id,amount),
       env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,amount,"paper-limit:"+orderId+":refund",user.id,"إعادة هامش أمر معلّق ملغى",orderId)
     ]);
     if(!Number(result?.[0]?.meta?.changes||0))return json({ok:false,error:"تم تنفيذ الأمر أو إلغاؤه مسبقاً"},409);
