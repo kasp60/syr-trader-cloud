@@ -4,35 +4,158 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101827">
-  <meta name="description" content="SYR TRADER - منصة تداول">
+  <meta name="description" content="SYR TRADER - منصة التداول">
   <title>SYR TRADER</title>
   <style>
-    :root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--line:#26364c;--text:#edf3fb;--muted:#9aabc0;--accent:#36c9a0}
+    :root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--line:#26364c;--text:#edf3fb;--muted:#9aabc0;--accent:#36c9a0;--danger:#ff8d8d}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#172d3c 0,transparent 35%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
-    header{display:flex;align-items:center;justify-content:space-between;padding:20px max(5vw,18px);border-bottom:1px solid var(--line)}
+    header{display:flex;align-items:center;justify-content:space-between;padding:18px max(5vw,18px);border-bottom:1px solid var(--line)}
     .brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}.status{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:7px 11px;border-radius:30px}
-    main{max-width:1080px;margin:56px auto;padding:0 20px}.eyebrow{color:var(--accent);font-size:13px;font-weight:700}
-    h1{font-size:clamp(30px,6vw,54px);margin:12px 0}.intro{color:var(--muted);line-height:1.9;max-width:650px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:34px}
-    .card{background:linear-gradient(145deg,#162337,#101a29);border:1px solid var(--line);border-radius:18px;padding:22px;min-height:145px}
-    .card h2{font-size:17px;margin:0 0 12px}.card p{color:var(--muted);font-size:14px;line-height:1.8;margin:0}
-    .notice{margin-top:24px;padding:16px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:14px;line-height:1.8}
-    footer{max-width:1080px;margin:60px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
+    main{max-width:1080px;margin:42px auto;padding:0 20px}.eyebrow{color:var(--accent);font-size:13px;font-weight:700}
+    h1{font-size:clamp(28px,5vw,46px);margin:10px 0}.intro{color:var(--muted);line-height:1.9;max-width:700px}
+    .layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(290px,.85fr);gap:18px;margin-top:28px}
+    .panel,.card{background:linear-gradient(145deg,#162337,#101a29);border:1px solid var(--line);border-radius:18px;padding:22px}
+    .panel h2,.card h2{font-size:18px;margin:0 0 16px}.tabs{display:flex;gap:8px;margin-bottom:18px}
+    button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:#24364b;color:var(--text)}
+    button.primary{background:var(--accent);color:#06251d;font-weight:800}button:disabled{opacity:.55;cursor:wait}
+    .tabs button[aria-selected=true]{background:var(--accent);color:#06251d;font-weight:700}
+    label{display:block;font-size:13px;color:#c4d1df;margin:13px 0 7px}
+    input{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit;outline:none}
+    input:focus{border-color:var(--accent)}.form-actions{margin-top:18px}.form-actions button{width:100%}
+    .message{min-height:24px;margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7}.message.error{color:var(--danger)}.message.success{color:var(--accent)}
+    .hidden{display:none!important}.account-line{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.account-line span:first-child{color:var(--muted)}
+    .balance{font-size:32px;font-weight:800;color:var(--accent);margin:10px 0}.muted{color:var(--muted);font-size:13px;line-height:1.8}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.card{min-height:130px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0}
+    .notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
+    footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
+    @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
   </style>
 </head>
 <body>
-  <header><div class="brand">SYR <span>TRADER</span></div><div class="status">الخادم متصل</div></header>
+  <header><div class="brand">SYR <span>TRADER</span></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
   <main>
     <div class="eyebrow">منصة التداول</div>
     <h1>مرحباً بك في SYR TRADER</h1>
-    <p class="intro">يجري تجهيز المنصة وربط خدمات الحسابات والأسواق والعمليات المالية. ستظهر بيانات السوق والأرصدة بعد إعداد الخدمات والتحقق منها.</p>
-    <section class="grid" aria-label="أقسام المنصة">
-      <article class="card"><h2>الأسواق</h2><p>واجهة عرض الأسواق والأسعار ستُفعّل بعد ربط مصدر بيانات موثوق.</p></article>
-      <article class="card"><h2>المحفظة</h2><p>لن يتم عرض أو إنشاء أرصدة مالية قبل إعداد قاعدة البيانات وسجل العمليات الآمن.</p></article>
-      <article class="card"><h2>الحساب</h2><p>سيتم تجهيز التسجيل وتسجيل الدخول وإدارة الجلسات والصلاحيات.</p></article>
+    <p class="intro">أنشئ حسابك للوصول إلى حسابك ومحفظتك. بيانات الحساب محفوظة في قاعدة بيانات المنصة، وكلمة المرور تُخزّن بصيغة مشفّرة مشتقة.</p>
+    <section class="layout">
+      <section class="panel" id="authPanel">
+        <h2>حسابك</h2>
+        <div class="tabs" role="tablist">
+          <button type="button" id="loginTab" aria-selected="true">تسجيل الدخول</button>
+          <button type="button" id="registerTab" aria-selected="false">إنشاء حساب</button>
+        </div>
+        <form id="authForm">
+          <div id="nameField" class="hidden"><label for="displayName">الاسم</label><input id="displayName" name="displayName" autocomplete="name" maxlength="60"></div>
+          <label for="email">البريد الإلكتروني</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254">
+          <label for="password">كلمة المرور</label><input id="password" name="password" type="password" autocomplete="current-password" required minlength="10" maxlength="128">
+          <div class="form-actions"><button class="primary" id="submitButton" type="submit">دخول</button></div>
+        </form>
+        <div class="message" id="authMessage" role="status" aria-live="polite"></div>
+      </section>
+      <section class="panel hidden" id="accountPanel">
+        <h2>ملخص الحساب</h2>
+        <div class="account-line"><span>الاسم</span><strong id="accountName">—</strong></div>
+        <div class="account-line"><span>البريد</span><strong id="accountEmail">—</strong></div>
+        <div class="account-line"><span>نوع الحساب</span><strong id="accountRole">مستخدم</strong></div>
+        <p class="muted">رصيد المحفظة</p>
+        <div class="balance" id="walletBalance">0</div>
+        <div class="muted" id="walletCurrency">ليرة</div>
+        <div class="form-actions"><button type="button" id="logoutButton">تسجيل الخروج</button></div>
+        <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
+      </section>
     </section>
-    <div class="notice">حالة التداول: غير مفعّل. لا توجد أوامر تداول أو إيداعات أو سحوبات حقيقية في هذه المرحلة.</div>
+    <section class="grid" aria-label="أقسام المنصة">
+      <article class="card"><h2>الأسواق</h2><p>سيتم عرض الأسعار بعد ربط مصدر بيانات موثوق والتحقق منه.</p></article>
+      <article class="card"><h2>المحافظ</h2><p>لكل مستخدم محفظته وسجل حركاته. الرصيد الجديد يبدأ بصفر.</p></article>
+    </section>
+    <div class="notice">التداول الحقيقي والإيداع والسحب غير مفعّلة. لا تنفّذ أي عملية مالية من هذه الواجهة.</div>
   </main>
   <footer>SYR TRADER · Cloudflare Workers</footer>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let mode = "login";
+  const message = (target, text, kind = "") => {
+    target.textContent = text;
+    target.className = "message" + (kind ? " " + kind : "");
+  };
+  const setMode = (next) => {
+    mode = next;
+    $("loginTab").setAttribute("aria-selected", String(mode === "login"));
+    $("registerTab").setAttribute("aria-selected", String(mode === "register"));
+    $("nameField").classList.toggle("hidden", mode !== "register");
+    $("displayName").required = mode === "register";
+    $("password").autocomplete = mode === "login" ? "current-password" : "new-password";
+    $("submitButton").textContent = mode === "login" ? "دخول" : "إنشاء الحساب";
+    message($("authMessage"), "");
+  };
+  const showAccount = (data) => {
+    $("authPanel").classList.add("hidden");
+    $("accountPanel").classList.remove("hidden");
+    $("accountName").textContent = data.user.displayName;
+    $("accountEmail").textContent = data.user.email;
+    $("accountRole").textContent = data.user.role === "admin" ? "مدير" : "مستخدم";
+    const amount = data.wallet ? Number(data.wallet.balanceMinor) : 0;
+    $("walletBalance").textContent = Number.isFinite(amount) ? amount.toLocaleString("en-US") : "0";
+    $("walletCurrency").textContent = data.wallet?.assetName || "ليرة";
+  };
+  const showAuth = () => {
+    $("accountPanel").classList.add("hidden");
+    $("authPanel").classList.remove("hidden");
+  };
+  const api = async (path, options = {}) => {
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      ...options,
+      headers: { "content-type": "application/json", ...(options.headers || {}) }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "تعذر تنفيذ الطلب");
+    return data;
+  };
+  $("loginTab").addEventListener("click", () => setMode("login"));
+  $("registerTab").addEventListener("click", () => setMode("register"));
+  $("authForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = $("submitButton");
+    button.disabled = true;
+    message($("authMessage"), "جارٍ تنفيذ الطلب...");
+    const payload = {
+      email: $("email").value.trim(),
+      password: $("password").value
+    };
+    if (mode === "register") payload.displayName = $("displayName").value.trim();
+    try {
+      const data = await api(mode === "login" ? "/api/auth/login" : "/api/auth/register", {
+        method: "POST", body: JSON.stringify(payload)
+      });
+      const account = await api("/api/auth/me", { headers: {} });
+      showAccount(account);
+      $("password").value = "";
+    } catch (error) {
+      message($("authMessage"), error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  $("logoutButton").addEventListener("click", async () => {
+    try {
+      await api("/api/auth/logout", { method: "POST", body: "{}" });
+      showAuth();
+      setMode("login");
+      message($("authMessage"), "تم تسجيل الخروج", "success");
+    } catch (error) {
+      message($("accountMessage"), error.message, "error");
+    }
+  });
+  api("/api/health", { headers: {} })
+    .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "الخادم وقاعدة البيانات متصلان" : "الخادم متصل"; })
+    .catch(() => { $("serverStatus").textContent = "تعذر الاتصال"; });
+  api("/api/auth/me", { headers: {} })
+    .then(showAccount)
+    .catch(() => showAuth());
+  setMode("login");
+})();
+</script>
 </body>
 </html>
