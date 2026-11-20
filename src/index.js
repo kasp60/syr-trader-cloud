@@ -423,6 +423,7 @@ const reserveSettlementStatements = (db, asset, tradeId, lockMinor, customerPnl,
 };
 
 const processPendingLimitOrders = async (db) => {
+  await syncPlatformReserve(db);
   const pending = await db.prepare("SELECT o.id,o.user_id AS userId,o.instrument_id AS instrumentId,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,p.price_micro AS currentPriceMicro FROM paper_limit_orders o JOIN market_prices p ON p.instrument_id=o.instrument_id WHERE o.status='pending'").all();
   let filled = 0;
   for (const order of (pending.results || [])) {
@@ -433,13 +434,20 @@ const processPendingLimitOrders = async (db) => {
     const quantity = order.direction === "long" ? (margin * leverage * 1000000000000n + entry / 2n) / entry : margin * leverage * 10000n;
     if (quantity <= 0n || quantity > 9007199254740991n) continue;
     const liquidation = order.direction === "long" ? (entry * BigInt(order.leverage - 1) / leverage) || 1n : entry * BigInt(order.leverage + 1) / leverage;
+    const bounds=await getReserveReferenceBounds(db),lock=tradeReserveLock(order.direction,quantity,entry,bounds);
+    if(lock<0n||lock>9007199254740991n)continue;
+    const reserve=await db.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(order.marginAssetSymbol).first();
+    const required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0),balance=BigInt(reserve?.balanceMinor||0);
+    if(required+lock>balance||reserved!== (required<balance?required:balance))continue;
     const tradeId = crypto.randomUUID(), now = new Date().toISOString();
     const result = await db.batch([
-      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?,'open',? FROM paper_limit_orders o WHERE o.id=? AND o.status='pending' AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro=? AND ((o.direction='long' AND p.price_micro<=o.limit_price_micro) OR (o.direction='short' AND p.price_micro>=o.limit_price_micro)))")
+      db.prepare("UPDATE platform_reserve_balances SET required_minor=required_minor+?,reserved_minor=reserved_minor+?,updated_at=? WHERE asset_symbol=? AND required_minor=? AND reserved_minor=? AND balance_minor-reserved_minor>=? AND EXISTS(SELECT 1 FROM paper_limit_orders WHERE id=? AND status='pending')").bind(Number(lock),Number(lock),now,order.marginAssetSymbol,Number(required),Number(reserved),Number(lock),order.id),
+      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?,'open',? FROM paper_limit_orders o WHERE o.id=? AND o.status='pending' AND changes()=1 AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro=? AND ((o.direction='long' AND p.price_micro<=o.limit_price_micro) OR (o.direction='short' AND p.price_micro>=o.limit_price_micro)))")
         .bind(tradeId,order.userId,order.instrumentId,order.direction,Number(quantity),Number(entry),order.leverage,Number(margin),order.marginAssetSymbol,Number(liquidation),now,order.id,Number(order.currentPriceMicro)),
       db.prepare("UPDATE paper_limit_orders SET status='filled',trade_id=?,filled_at=? WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(tradeId,now,order.id,tradeId)
     ]);
-    if (Number(result?.[0]?.meta?.changes || 0) > 0 && Number(result?.[1]?.meta?.changes || 0) > 0) filled++;
+    if (Number(result?.[0]?.meta?.changes || 0) > 0 && Number(result?.[1]?.meta?.changes || 0) > 0 && Number(result?.[2]?.meta?.changes || 0) > 0) filled++;
+    else await syncPlatformReserve(db);
   }
   return filled;
 };
