@@ -60,9 +60,12 @@
         <div class="account-line"><span>الاسم</span><strong id="accountName">—</strong></div>
         <div class="account-line"><span>البريد</span><strong id="accountEmail">—</strong></div>
         <div class="account-line"><span>نوع الحساب</span><strong id="accountRole">مستخدم</strong></div>
-        <p class="muted">رصيد المحفظة</p>
-        <div class="balance" id="walletBalance">0</div>
-        <div class="muted" id="walletCurrency">ليرة</div>
+        <p class="muted">المحافظ</p>
+        <div class="grid" id="userWallets">
+          <article class="card"><h2>الليرة</h2><div class="balance" id="sypBalance">0</div></article>
+          <article class="card"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
+        </div>
+        <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
         <div class="form-actions"><button type="button" id="logoutButton">تسجيل الخروج</button></div>
         <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
         <section id="ledgerPanel" class="subpanel">
@@ -80,12 +83,17 @@
             <select id="targetWallet" required></select>
             <label for="adjustType">نوع الحركة</label>
             <select id="adjustType"><option value="credit">إضافة رصيد</option><option value="debit">خصم رصيد</option></select>
-            <label for="adjustAmount">المبلغ بالليرة</label>
-            <input id="adjustAmount" type="number" min="1" step="1" required>
+            <label for="adjustAmount">المبلغ حسب عملة المحفظة</label>
+            <input id="adjustAmount" type="number" min="0.01" step="0.01" required>
             <label for="adjustNote">ملاحظة الحركة</label>
             <input id="adjustNote" maxlength="240" placeholder="سبب التعديل">
             <div class="form-actions"><button class="primary" type="submit">تأكيد الحركة</button></div>
           </form>
+          <h3 style="margin-top:22px">سعر صرف الدولار مقابل الليرة</h3>
+          <label for="exchangeRateInput">كم ليرة تساوي دولاراً واحداً؟</label>
+          <input id="exchangeRateInput" type="number" min="0.000001" step="0.01" placeholder="أدخل السعر المعتمد">
+          <div class="form-actions"><button type="button" id="saveRateButton">حفظ سعر الصرف</button></div>
+          <div class="message" id="rateMessage" role="status" aria-live="polite"></div>
           <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
         </section>
       </section>
@@ -122,9 +130,16 @@
     $("accountName").textContent = data.user.displayName;
     $("accountEmail").textContent = data.user.email;
     $("accountRole").textContent = data.user.role === "admin" ? "مدير" : "مستخدم";
-    const amount = data.wallet ? Number(data.wallet.balanceMinor) : 0;
-    $("walletBalance").textContent = Number.isFinite(amount) ? amount.toLocaleString("en-US") : "0";
-    $("walletCurrency").textContent = data.wallet?.assetName || "ليرة";
+    const wallets = data.wallets || [];
+    const syp = wallets.find((w) => w.symbol === "SYP");
+    const usd = wallets.find((w) => w.symbol === "USD");
+    $("sypBalance").textContent = Number(syp?.balanceMinor || 0).toLocaleString("en-US");
+    $("usdBalance").textContent = (Number(usd?.balanceMinor || 0) / 100).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+    const rateText = data.exchangeRate?.rate > 0
+      ? "سعر الإدارة: 1 دولار = " + Number(data.exchangeRate.rate).toLocaleString("en-US") + " ليرة"
+      : "سعر الصرف غير محدد من الإدارة بعد.";
+    $("exchangeRateView").textContent = rateText;
+    if (data.user.role === "admin" && data.exchangeRate?.rate > 0) $("exchangeRateInput").value = data.exchangeRate.rate;
     loadLedger();
     if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); }
     else $("adminPanel").classList.add("hidden");
@@ -148,7 +163,7 @@
       data.entries.forEach((entry) => {
         const label = entry.type === "credit" ? "إضافة" : entry.type === "debit" ? "خصم" : "تسوية";
         const date = new Date(entry.createdAt).toLocaleString("ar");
-        addTextRow(container, label + " · " + date, Number(entry.amountMinor).toLocaleString("en-US") + " ليرة");
+        addTextRow(container, label + " · " + date, Number(entry.amountMinor).toLocaleString("en-US"));
       });
     } catch (error) { container.textContent = error.message; }
   };
@@ -202,11 +217,14 @@
     try {
       const data = await api("/api/admin/wallets", { headers: {} });
       data.wallets.forEach((wallet) => {
-        addTextRow(list, wallet.displayName + " · " + wallet.email,
-          Number(wallet.balanceMinor).toLocaleString("en-US") + " ليرة", "admin-wallet-row");
+        const divisor = wallet.symbol === "USD" ? 100 : 1;
+        const currencyLabel = wallet.symbol === "USD" ? "دولار" : "ليرة";
+        addTextRow(list, wallet.displayName + " · " + wallet.email + " · " + currencyLabel,
+          (Number(wallet.balanceMinor) / divisor).toLocaleString("en-US", {minimumFractionDigits: wallet.symbol === "USD" ? 2 : 0, maximumFractionDigits: 2}) + " " + currencyLabel, "admin-wallet-row");
         const option = document.createElement("option");
         option.value = wallet.walletId;
-        option.textContent = wallet.displayName + " — " + wallet.email;
+        option.dataset.symbol = wallet.symbol;
+        option.textContent = wallet.displayName + " — " + wallet.email + " — " + currencyLabel;
         select.appendChild(option);
       });
       if (!data.wallets.length) list.textContent = "لا توجد محافظ.";
@@ -262,7 +280,7 @@
         body: JSON.stringify({
           walletId: $("targetWallet").value,
           type: $("adjustType").value,
-          amountMinor: Number($("adjustAmount").value),
+          amountMinor: Math.round(Number($("adjustAmount").value) * ( $("targetWallet").selectedOptions[0]?.dataset.symbol === "USD" ? 100 : 1)),
           note: $("adjustNote").value.trim(),
           idempotencyKey: crypto.randomUUID()
         })
@@ -273,6 +291,20 @@
       loadAdminWallets();
       loadLedger();
     } catch (error) { message($("adminMessage"), error.message, "error"); }
+    finally { button.disabled = false; }
+  });
+  $("saveRateButton").addEventListener("click", async () => {
+    const button = $("saveRateButton");
+    button.disabled = true;
+    message($("rateMessage"), "جارٍ حفظ سعر الصرف...");
+    try {
+      const data = await api("/api/admin/exchange-rate", {
+        method: "POST",
+        body: JSON.stringify({ rate: Number($("exchangeRateInput").value) })
+      });
+      $("exchangeRateView").textContent = "سعر الإدارة: 1 دولار = " + Number(data.rate).toLocaleString("en-US") + " ليرة";
+      message($("rateMessage"), "تم حفظ سعر الصرف.", "success");
+    } catch (error) { message($("rateMessage"), error.message, "error"); }
     finally { button.disabled = false; }
   });
   $("logoutButton").addEventListener("click", async () => {
