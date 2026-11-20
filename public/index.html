@@ -126,7 +126,7 @@
             <h3>التحويل واستلام الأموال</h3>
             <div class="notice">رقم عضويتك داخل SYR TRADER: <strong id="walletMemberCode">—</strong>. استخدمه لاستلام التحويلات من الأعضاء الآخرين.</div>
             <h3 style="margin-top:22px">إيداع عبر Binance</h3>
-            <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أرفق صورة إثبات العملية. سيبقى طلب الإيداع قيد المراجعة ولن يضاف الرصيد إلا بعد موافقة المدير.</p>
+            <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أرفق صورة إثبات العملية. سيبقى طلب الإيداع قيد المراجعة ولن يضاف الرصيد إلا بعد أن يتحقق المدير من وصول الحوالة ويوافق عليها.</p>
             <form id="depositForm">
               <label for="depositAmount">مبلغ الإيداع بالليرة</label><input id="depositAmount" type="number" min="1" step="1" required>
               <label for="depositProof">صورة إثبات التحويل (JPG / PNG / WEBP، حتى 850 كيلوبايت)</label><input id="depositProof" type="file" accept="image/jpeg,image/png,image/webp" required>
@@ -135,7 +135,7 @@
             <div id="depositMessage" class="message" role="status"></div>
             <div class="divider"></div>
             <h3 style="margin-top:22px">طلب سحب</h3>
-            <p class="muted">يُحجز المبلغ من رصيدك عند إرسال الطلب. إذا رفض المدير الطلب، يرجع المبلغ تلقائياً إلى محفظتك.</p>
+            <p class="muted">يُحجز المبلغ من رصيدك عند إرسال الطلب. بعد تنفيذ التحويل لك خارج التطبيق، يعتمد المدير الطلب؛ وإذا رفضه يرجع المبلغ تلقائياً إلى محفظتك.</p>
             <form id="withdrawForm">
               <label for="withdrawAmount">مبلغ السحب بالليرة</label><input id="withdrawAmount" type="number" min="1" step="1" required>
               <label for="withdrawDetails">بيانات الاستلام أو معرّف المحفظة</label><textarea id="withdrawDetails" rows="3" maxlength="300" required></textarea>
