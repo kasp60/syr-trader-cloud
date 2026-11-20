@@ -172,7 +172,7 @@
     /* Stable header/navigation flow and two explicit chart-control rows. */
     header{position:relative;height:auto;min-height:0;}
     .app-nav{position:relative;height:auto;min-height:0;margin-bottom:16px!important;}
-    #tradingWorkspace>.chart-controls{position:relative;display:flex!important;flex-direction:column;align-items:stretch;gap:10px;clear:both;width:100%;height:auto;min-height:0;margin:28px 0 20px!important;padding:14px 12px;border:1px solid #315778;border-radius:12px;background:rgba(9,27,45,.72);z-index:1;}\n    /* Account overview: keep navigation directly below its title, in normal document flow. */\n    #accountPanel>h2{margin:0 0 8px!important;}\n    #accountPanel>.app-nav{position:relative!important;top:auto!important;margin:0 0 16px!important;}\n    #page-dashboard>.account-hero{margin-top:0;}
+    #tradingWorkspace>.chart-controls{position:relative;display:flex!important;flex-direction:column;align-items:stretch;gap:10px;clear:both;width:100%;height:auto;min-height:0;margin:28px 0 20px!important;padding:14px 12px;border:1px solid #315778;border-radius:12px;background:rgba(9,27,45,.72);z-index:1;}
     .chart-control-row{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;width:100%;height:auto;min-height:42px;}
     .chart-control-row .chart-control-label{font-size:13px;color:#eaf4ff;font-weight:700;white-space:nowrap;margin-inline-end:4px;}
     .chart-control-row button{min-width:48px;min-height:38px;padding:7px 12px;}
@@ -184,6 +184,15 @@
       .chart-range-row,.chart-count-row{gap:8px;}
       .chart-control-row button{flex:0 0 auto;min-width:44px;padding:7px 10px;font-size:13px;}
     }
+    /* Account overview navigation: remove excess top gap and keep it above the wallet card. */
+    #accountPanel>h2{margin:0 0 8px!important;padding:0!important;}
+    #accountPanel>.app-nav{
+      position:relative!important;top:auto!important;bottom:auto!important;inset:auto!important;
+      transform:none!important;float:none!important;clear:both!important;
+      height:auto!important;min-height:0!important;
+      margin:0 0 20px!important;padding:6px!important;
+    }
+    #accountPanel .account-hero{position:relative!important;margin:0 0 18px!important;}
   </style>
 </head>
 <body>
