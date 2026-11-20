@@ -129,6 +129,25 @@
     .leverage-slider{width:100%;accent-color:#27d6a5;cursor:pointer;margin:12px 0 4px}
     .leverage-scale{display:flex;justify-content:space-between;color:#9bb1c7;font-size:12px;margin-bottom:14px}
 
+  
+    #tradingWorkspace>#openTradesSection{order:6}
+    .open-trades-section{margin-top:16px;padding:16px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(8,19,32,.58)}
+    .open-trades-section h3{margin:0 0 12px;font-size:16px}
+    .open-trades-list{display:grid;gap:12px}
+    .trade-contract-card{padding:14px;border:1px solid rgba(83,155,198,.28);border-radius:13px;background:linear-gradient(145deg,rgba(23,57,87,.72),rgba(10,25,42,.9));display:grid;gap:13px}
+    .contract-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .contract-heading strong{font-size:16px;color:#f4f8fc}
+    .contract-status{font-size:12px;color:#42e0ae;background:rgba(39,214,165,.1);border:1px solid rgba(39,214,165,.25);padding:4px 9px;border-radius:20px}
+    .contract-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .contract-details>div{display:flex;flex-direction:column;gap:5px;padding:10px;border-radius:9px;background:rgba(255,255,255,.035)}
+    .contract-details span{font-size:11px;color:#a9bfd2}
+    .contract-details strong{font-size:13px;color:#eef6ff;overflow-wrap:anywhere}
+    .contract-details .liquidation-value,.contract-details .loss-value{color:#ff8293}
+    .contract-details .profit-value{color:#46e0ad}
+    .close-contract-button{width:100%;min-height:44px;border:1px solid rgba(255,113,133,.5);border-radius:10px;background:rgba(255,113,133,.13);color:#ff9aaa;font-weight:800}
+    .close-contract-button:disabled{opacity:.55}
+    @media(max-width:480px){.contract-details{grid-template-columns:1fr 1fr}.trade-contract-card{padding:11px}.contract-details>div{padding:8px}.contract-details strong{font-size:12px}}
+
   </style>
 </head>
 <body>
@@ -230,8 +249,9 @@
             </form>
             <div id="terminalMessage" class="message" role="status"></div>
           </div>
+          <section id="openTradesSection" class="open-trades-section"><h3>عقودك المفتوحة</h3><div id="openTradesList" class="open-trades-list muted">لا توجد صفقات مفتوحة.</div></section>
           <div class="trade-tabs"><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button></div>
-          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>الصفقات المفتوحة</h3><div id="openTradesList" class="muted">—</div><h3>سجل الصفقات المغلقة والتصفية</h3><div id="closedTradesList" class="muted">—</div><h3>آخر الأوامر</h3><div id="terminalOrders" class="muted">—</div></div>
+          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>سجل الصفقات المغلقة والتصفية</h3><div id="closedTradesList" class="muted">—</div><h3>آخر الأوامر</h3><div id="terminalOrders" class="muted">—</div></div>
           <div id="tradeTerminalView" class="trade-view active"></div>
         </section>
         <section id="paperMarketPanel" class="subpanel hidden" aria-hidden="true">
@@ -642,18 +662,30 @@
       if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
       else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
       const openTrades=$("openTradesList");openTrades.replaceChildren();
-      if(!data.openTrades?.length)openTrades.textContent="لا توجد صفقات مفتوحة.";
+      if(!data.openTrades?.length)openTrades.textContent="لا توجد صفقات مفتوحة حالياً.";
       else data.openTrades.forEach(t=>{
-        const row=document.createElement("div");row.className="ledger-row";
-        const info=document.createElement("span");
-        const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+        const row=document.createElement("article");row.className="trade-contract-card";
         const entry=Number(t.entryPriceMicro)/1000000,current=Number(t.currentPriceMicro)/1000000,liq=Number(t.liquidationPriceMicro)/1000000;
+        const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
         const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+        const margin=Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1);
         const pnl=t.direction==="long"?(current-entry)*Number(t.quantityMicro)/1000000:(entry-current)/entry*(Number(t.quantityMicro)/1000000);
-        info.textContent=(t.direction==="long"?"شراء / خصم ليرة":"بيع / خصم دولار")+" · كمية "+qty+" · دخول "+entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة · تصفية "+liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة · هامش "+(Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset+" · "+Number(t.leverage)+"x · ربح/خسارة تقديري "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset;
-        const close=document.createElement("button");close.type="button";close.className="primary";close.textContent="إغلاق الصفقة";
+        const heading=document.createElement("div");heading.className="contract-heading";
+        const title=document.createElement("strong");title.textContent=t.direction==="long"?"شراء · LONG":"بيع · SHORT";
+        const status=document.createElement("span");status.textContent="مفتوحة";status.className="contract-status";
+        heading.append(title,status);
+        const details=document.createElement("div");details.className="contract-details";
+        const addDetail=(label,value,extra="")=>{const cell=document.createElement("div");const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value; if(extra)v.className=extra;cell.append(l,v);details.appendChild(cell);};
+        addDetail("سعر الدخول",entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
+        addDetail("السعر الحالي",current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
+        addDetail("سعر التصفية",liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","liquidation-value");
+        addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
+        addDetail("حجم العقد",qty);
+        addDetail("الرافعة المالية",Number(t.leverage)+"x");
+        addDetail("الربح / الخسارة التقديرية",(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset,pnl>=0?"profit-value":"loss-value");
+        const close=document.createElement("button");close.type="button";close.className="close-contract-button";close.textContent="إغلاق الصفقة";
         close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/(result.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
-        row.append(info,close);openTrades.appendChild(row);
+        row.append(heading,details,close);openTrades.appendChild(row);
       });
       const closedList=$("closedTradesList");closedList.replaceChildren();
       if(!data.closedTrades?.length)closedList.textContent="لا توجد صفقات مغلقة بعد.";
