@@ -280,22 +280,28 @@ const walletApi = async (request, env, url) => {
     if(side==="sell"&&Number(position?.quantityMicro||0)<quantityMicro)
       return json({ok:false,error:"الكمية المملوكة تجريبياً غير كافية للبيع"},409);
     const now=new Date().toISOString(),orderId=crypto.randomUUID();
+    const orderInsert=env.DB.prepare(`INSERT INTO paper_orders (id,user_id,instrument_id,side,quantity_micro,price_micro,total_cents)
+      SELECT ?,?,?,?,?,?,? WHERE changes()=1`).bind(orderId,user.id,instrumentId,side,quantityMicro,instrument.priceMicro,totalCents);
     const statements=side==="buy"?[
       env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?")
         .bind(totalCents,now,user.id,totalCents),
-      env.DB.prepare(`INSERT INTO paper_positions (user_id,instrument_id,quantity_micro) VALUES (?,?,?)
+      env.DB.prepare(`INSERT INTO paper_positions (user_id,instrument_id,quantity_micro)
+        SELECT ?,?,? WHERE changes()=1
         ON CONFLICT(user_id,instrument_id) DO UPDATE SET quantity_micro=quantity_micro+excluded.quantity_micro`)
-        .bind(user.id,instrumentId,quantityMicro)
+        .bind(user.id,instrumentId,quantityMicro),
+      orderInsert
     ]:[
-      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-?")
-        .bind(totalCents,now,user.id,totalCents),
       env.DB.prepare("UPDATE paper_positions SET quantity_micro=quantity_micro-? WHERE user_id=? AND instrument_id=? AND quantity_micro>=?")
-        .bind(quantityMicro,user.id,instrumentId,quantityMicro)
+        .bind(quantityMicro,user.id,instrumentId,quantityMicro),
+      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-? AND changes()=1")
+        .bind(totalCents,now,user.id,totalCents),
+      orderInsert
     ];
-    statements.push(env.DB.prepare(`INSERT INTO paper_orders (id,user_id,instrument_id,side,quantity_micro,price_micro,total_cents)
-      VALUES (?,?,?,?,?,?,?)`).bind(orderId,user.id,instrumentId,side,quantityMicro,instrument.priceMicro,totalCents));
-    try { await env.DB.batch(statements); }
+    let results;
+    try { results=await env.DB.batch(statements); }
     catch { return json({ok:false,error:"تعذر تنفيذ الأمر التجريبي؛ لم يتم اعتماد العملية"},409); }
+    if(!results?.[results.length-1]?.meta?.changes)
+      return json({ok:false,error:side==="buy"?"رصيد التداول التجريبي غير كافٍ":"الكمية المملوكة تجريبياً غير كافية"},409);
     return json({ok:true,orderId,side,symbol:instrument.symbol,quantity,price:Number(instrument.priceMicro)/1000000,totalCents});
   }
 
@@ -566,7 +572,7 @@ export default {
       }
     }
 
-    if (url.pathname.startsWith("/api/wallet/") || url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/api/market/")) {
+    if (url.pathname.startsWith("/api/wallet/") || url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/api/market/") || url.pathname.startsWith("/api/paper/")) {
       try { return await walletApi(request, env, url); }
       catch (error) {
         console.error("SYR_TRADER_WALLET_ERROR", {
