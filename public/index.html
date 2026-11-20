@@ -376,7 +376,7 @@
               <div class="form-actions"><button class="primary" type="submit">إضافة إلى الاحتياطي</button></div>
             </form>
             <div id="platformReserveMessage" class="message" role="status"></div>
-            <h4>سجل تمويل الاحتياطي</h4><div id="platformReserveMovements" class="muted">لا توجد حركات مسجلة.</div>
+            <h4>سجل تمويل الاحتياطي</h4><div id="platformReserveMovements" class="muted">لا توجد حركات مسجلة.</div><h4>حركات الاحتياطي وتسويات الصفقات</h4><div id="platformReserveLedger" class="muted">لا توجد تسويات مسجلة.</div>
           </section>
           <h3 style="margin-top:22px">إدارة المحافظ</h3>
           <div id="adminWalletList" class="muted">جارٍ تحميل المحافظ...</div>
@@ -934,8 +934,10 @@
     try{
       const data=await api("/api/admin/platform-reserve",{headers:{}});
       const fmtReserve=(value,asset)=>asset==="USD"?(Number(value)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" دولار":Number(value).toLocaleString("en-US")+" ليرة";
-      $("platformReserveBalances").innerHTML=(data.balances||[]).map(item=>'<div class="performance-card"><span>احتياطي '+(item.assetSymbol==="USD"?"الدولار":"الليرة")+'</span><strong>'+fmtReserve(item.balanceMinor,item.assetSymbol)+'</strong><span class="muted">المتاح: '+fmtReserve(item.availableMinor,item.assetSymbol)+' · المحجوز: '+fmtReserve(item.reservedMinor,item.assetSymbol)+'</span></div>').join("")||'<div class="muted">لا توجد أرصدة احتياطي.</div>';
+      $("platformReserveBalances").innerHTML=(data.balances||[]).map(item=>'<div class="performance-card"><span>احتياطي '+(item.assetSymbol==="USD"?"الدولار":"الليرة")+'</span><strong>'+fmtReserve(item.balanceMinor,item.assetSymbol)+'</strong><span class="muted">المتاح: '+fmtReserve(item.availableMinor,item.assetSymbol)+' · المحجوز: '+fmtReserve(item.reservedMinor,item.assetSymbol)+' · المطلوب: '+fmtReserve(item.requiredMinor,item.assetSymbol)+' · العجز: '+fmtReserve(item.deficitMinor,item.assetSymbol)+'</span></div>').join("")||'<div class="muted">لا توجد أرصدة احتياطي.</div>';
       $("platformReserveMovements").innerHTML=(data.movements||[]).map(item=>'<div class="account-line"><span>'+new Date(item.createdAt).toLocaleString("ar")+' · '+item.assetSymbol+' · '+fmtReserve(item.amountMinor,item.assetSymbol)+'<br><small>'+escapeHtml(item.note)+' · المرجع: '+escapeHtml(item.externalReference)+'</small></span><strong>'+escapeHtml(item.createdBy||"المدير")+'</strong></div>').join("")||"لا توجد حركات تمويل بعد.";
+      const eventLabels={funding:"تمويل",trade_payout:"دفع ربح",trade_gain:"نتيجة صفقة لصالح الاحتياطي",liquidation_gain:"ربح تصفية"};
+      $("platformReserveLedger").innerHTML=(data.ledger||[]).map(item=>'<div class="account-line"><span>'+new Date(item.createdAt).toLocaleString("ar")+' · '+(eventLabels[item.eventType]||item.eventType)+' · '+item.assetSymbol+' · '+fmtReserve(Math.abs(Number(item.amountMinor)),item.assetSymbol)+'<br><small>'+escapeHtml(item.note)+' · '+escapeHtml(item.referenceId)+'</small></span><strong>'+ (Number(item.amountMinor)<0?"خصم":"إضافة")+'</strong></div>').join("")||"لا توجد تسويات مسجلة.";
     }catch(error){message($("platformReserveMessage"),error.message,"error");}
   };
   $("platformReserveForm").addEventListener("submit",async event=>{
