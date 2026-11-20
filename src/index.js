@@ -249,7 +249,7 @@ const ensureSypMarket = async (db) => {
         db.prepare("INSERT INTO market_prices(instrument_id,price_micro,updated_at) VALUES('syr-usd-syp',?,?)").bind(priceMicro,now),
         db.prepare("INSERT INTO market_price_history(id,instrument_id,price_micro,source,created_at) VALUES(?,'syr-usd-syp',?,'manual',?)").bind(crypto.randomUUID(),priceMicro,now)
       ]);
-      await db.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_at) VALUES('syr-usd-syp',1,80,0,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(now).run();
+      await db.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_at) VALUES('syr-usd-syp',0,80,0,?) ON CONFLICT(instrument_id) DO NOTHING").bind(now).run();
     }
   }
 };
@@ -629,7 +629,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?) ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(rate,user.id,now),
       env.DB.prepare("INSERT INTO market_prices(instrument_id,price_micro,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,user.id,now),
       env.DB.prepare("INSERT INTO market_price_history(id,instrument_id,price_micro,source,created_at) VALUES(?,'syr-usd-syp',?,'manual',?)").bind(crypto.randomUUID(),priceMicro,now),
-      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
+      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',0,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
     ]);
     return json({ok:true,rate,botEnabled:true});
   }
