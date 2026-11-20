@@ -172,7 +172,7 @@
         const action = document.createElement("button");
         action.type = "button";
         action.textContent = account.status === "active" ? "إيقاف" : "تفعيل";
-        action.disabled = account.id === window.__syrCurrentUserId || account.status === "pending";
+        action.disabled = account.id === window.__syrCurrentUserId;
         action.addEventListener("click", async () => {
           action.disabled = true;
           try {
