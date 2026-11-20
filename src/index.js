@@ -559,11 +559,11 @@ const walletApi = async (request, env, url) => {
     if(!wallet)return json({ok:false,error:"محفظة العملة المطلوبة غير موجودة"},409);
     const results=await env.DB.batch([
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(marginCents,now,wallet.id,marginCents),
-      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?, 'open',? WHERE changes()=1").bind(tradeId,user.id,instrumentId,direction,quantityMicro,instrument.priceMicro,leverage,marginCents,marginAssetSymbol,liquidationPriceMicro,now),
+      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?, 'open',? WHERE changes()=1").bind(tradeId,user.id,instrumentId,direction,quantityMicro,Number(entry),leverage,marginCents,marginAssetSymbol,liquidationPriceMicro,now),
       env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع")+" تجريبية",tradeId)
     ]);
     if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
-    return json({ok:true,tradeId,direction,marginAmount,quantity:Number(quantityMicro)/1000000,leverage,marginCents,marginAssetSymbol,entryPriceMicro:instrument.priceMicro,liquidationPriceMicro});
+    return json({ok:true,tradeId,direction,marginAmount,quantity:Number(quantityMicro)/1000000,leverage,marginCents,marginAssetSymbol,entryPriceMicro:Number(entry),liquidationPriceMicro});
   }
 
 
