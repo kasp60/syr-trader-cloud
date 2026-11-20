@@ -5,6 +5,9 @@ const json = (data, status = 200, headers = {}) =>
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
       ...headers
     }
   });
@@ -693,7 +696,19 @@ export default {
       return json({ ok: false, error: "API route not found" }, 404);
     }
 
-    if (env.ASSETS) return env.ASSETS.fetch(request);
+    if (env.ASSETS) {
+      const assetResponse = await env.ASSETS.fetch(request);
+      const headers = new Headers(assetResponse.headers);
+      headers.set("x-content-type-options", "nosniff");
+      headers.set("x-frame-options", "DENY");
+      headers.set("referrer-policy", "strict-origin-when-cross-origin");
+      headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers
+      });
+    }
     return new Response("SYR TRADER assets are not configured.", { status: 503 });
   }
 };
