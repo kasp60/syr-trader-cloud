@@ -131,6 +131,10 @@
 
   
     #tradingWorkspace>#openTradesSection{order:6}
+    #tradingWorkspace>#pendingLimitOrdersSection{order:7}
+    .limit-order-hint{margin:6px 0 0;color:#9bbbd1;font-size:12px;line-height:1.6}
+    .limit-order-cancel{width:100%;min-height:42px;border:1px solid rgba(255,113,133,.5);border-radius:10px;background:rgba(255,113,133,.12);color:#ff9aaa;font-weight:800}
+    .limit-order-cancel:disabled{opacity:.55}
     .open-trades-section{margin-top:16px;padding:16px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(8,19,32,.58)}
     .open-trades-section h3{margin:0 0 12px;font-size:16px}
     .open-trades-list{display:grid;gap:12px}
@@ -243,6 +247,8 @@
             <div class="trade-wallet-balances"><div><span>رصيد الليرة</span><strong id="terminalSypBalance">—</strong></div><div><span>رصيد الدولار</span><strong id="terminalUsdBalance">—</strong></div></div><div class="notice">الشراء يحجز الهامش من محفظة الليرة، والبيع يحجزه من محفظة الدولار. الخصم والأرباح والخسائر تُسجّل فعلياً في رصيد محفظتك داخل المنصة، أما حركة السعر فهي محاكاة يحددها المدير والبوت. لكل صفقة سعر تصفية تلقائي.</div>
             <form id="terminalOrderForm">
               <label>نوع الصفقة</label><div class="trade-side-actions"><button type="button" id="terminalBuyButton" class="trade-side-button buy active" aria-pressed="true">شراء · LONG</button><button type="button" id="terminalSellButton" class="trade-side-button sell" aria-pressed="false">بيع · SHORT</button></div><input id="terminalSide" type="hidden" value="buy">
+              <label for="terminalOrderType">طريقة تنفيذ الصفقة</label><select id="terminalOrderType"><option value="market">تنفيذ فوري بسعر السوق</option><option value="limit">أمر معلّق بسعر أحدده</option></select>
+              <div id="terminalLimitPriceWrap" class="hidden"><label for="terminalLimitPrice">السعر المحدد (ليرة)</label><input id="terminalLimitPrice" type="number" min="0.01" step="0.01" placeholder="أدخل السعر الذي تريد التنفيذ عنده"><p class="limit-order-hint">الشراء يتفعل عند وصول السعر إلى الحد أو أقل، والبيع عند وصوله إلى الحد أو أعلى.</p></div>
               <label for="terminalLeverage">الرافعة المالية <strong id="terminalLeverageValue">1x</strong></label><input id="terminalLeverage" class="leverage-slider" type="range" min="1" max="20" step="1" value="1" aria-valuemin="1" aria-valuemax="20" aria-valuenow="1"><div class="leverage-scale"><span>1x</span><span>20x</span></div>
               <label id="terminalAmountLabel" for="terminalQuantity">الهامش بالليرة</label><input id="terminalQuantity" type="number" min="1" step="1" placeholder="أدخل مبلغ الهامش" required>
               <button class="primary" type="submit">فتح الصفقة</button>
@@ -250,6 +256,7 @@
             <div id="terminalMessage" class="message" role="status"></div>
           </div>
           <section id="openTradesSection" class="open-trades-section"><h3>عقودك المفتوحة</h3><div id="openTradesList" class="open-trades-list muted">لا توجد صفقات مفتوحة.</div></section>
+          <section id="pendingLimitOrdersSection" class="open-trades-section"><h3>الأوامر المعلّقة</h3><div id="pendingLimitOrdersList" class="open-trades-list muted">لا توجد أوامر معلّقة.</div></section>
           <div class="trade-tabs"><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button></div>
           <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>سجل الصفقات المغلقة والتصفية</h3><div id="closedTradesList" class="muted">—</div><h3>آخر الأوامر</h3><div id="terminalOrders" class="muted">—</div></div>
           <div id="tradeTerminalView" class="trade-view active"></div>
@@ -690,6 +697,27 @@
         close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/(result.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
         row.append(heading,details,close);openTrades.appendChild(row);
       });
+
+      const pendingList=$("pendingLimitOrdersList");pendingList.replaceChildren();
+      if(!data.limitOrders?.length)pendingList.textContent="لا توجد أوامر معلّقة حالياً.";
+      else data.limitOrders.forEach(o=>{
+        const row=document.createElement("article");row.className="trade-contract-card";
+        const asset=o.marginAssetSymbol==="USD"?"دولار":"ليرة";
+        const margin=Number(o.marginMinor)/(o.marginAssetSymbol==="USD"?100:1);
+        const heading=document.createElement("div");heading.className="contract-heading";
+        const title=document.createElement("strong");title.textContent=o.direction==="long"?"شراء معلّق · LONG":"بيع معلّق · SHORT";
+        const status=document.createElement("span");status.className="contract-status";status.textContent="بانتظار السعر";
+        heading.append(title,status);
+        const details=document.createElement("div");details.className="contract-details";
+        const addDetail=(label,value)=>{const cell=document.createElement("div"),l=document.createElement("span"),v=document.createElement("strong");l.textContent=label;v.textContent=value;cell.append(l,v);details.appendChild(cell);};
+        addDetail("سعر التنفيذ المحدد",(Number(o.limitPriceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
+        addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
+        addDetail("الرافعة المالية",Number(o.leverage)+"x");
+        addDetail("وقت إنشاء الأمر",new Date(o.createdAt).toLocaleString("ar"));
+        const cancel=document.createElement("button");cancel.type="button";cancel.className="limit-order-cancel";cancel.textContent="إلغاء الأمر وإعادة الهامش";
+        cancel.addEventListener("click",async()=>{cancel.disabled=true;try{await api("/api/paper/limit-order-cancel",{method:"POST",body:JSON.stringify({orderId:o.id})});message($("terminalMessage"),"تم إلغاء الأمر وإعادة الهامش إلى محفظتك.","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");cancel.disabled=false;}});
+        row.append(heading,details,cancel);pendingList.appendChild(row);
+      });
       const closedList=$("closedTradesList");closedList.replaceChildren();
       if(!data.closedTrades?.length)closedList.textContent="لا توجد صفقات مغلقة بعد.";
       else data.closedTrades.forEach(t=>{
@@ -824,8 +852,23 @@
   $("terminalBuyButton").addEventListener("click",()=>setTradeSide("buy"));
   $("terminalSellButton").addEventListener("click",()=>setTradeSide("sell"));
   $("terminalLeverage").addEventListener("input",()=>{$("terminalLeverageValue").textContent=$("terminalLeverage").value+"x";$("terminalLeverage").setAttribute("aria-valuenow",$("terminalLeverage").value);});
-  updateTradeMarginInput();
-  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{const direction=$("terminalSide").value==="buy"?"long":"short";await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId:$("chartInstrument").value,direction,margin:Number($("terminalQuantity").value),leverage:Number($("terminalLeverage").value)})});$("terminalQuantity").value="";message($("terminalMessage"),"تم حجز الهامش كاملاً وفتح الصفقة بحجم مضاعف "+$("terminalLeverage").value+"x.","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
+  const updateLimitPriceVisibility=()=>{$("terminalLimitPriceWrap").classList.toggle("hidden",$("terminalOrderType").value!=="limit");$("terminalLimitPrice").required=$("terminalOrderType").value==="limit";};
+  $("terminalOrderType").addEventListener("change",updateLimitPriceVisibility);
+  updateTradeMarginInput();updateLimitPriceVisibility();
+  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{
+    const direction=$("terminalSide").value==="buy"?"long":"short";
+    const leverage=Number($("terminalLeverage").value),margin=Number($("terminalQuantity").value),instrumentId=$("chartInstrument").value;
+    if($("terminalOrderType").value==="limit"){
+      const result=await api("/api/paper/limit-order",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage,limitPrice:Number($("terminalLimitPrice").value)})});
+      $("terminalQuantity").value="";$("terminalLimitPrice").value="";
+      message($("terminalMessage"),result.status==="filled"?"وصل السعر المحدد وتم فتح الصفقة تلقائياً.":"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
+    }else{
+      await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      $("terminalQuantity").value="";
+      message($("terminalMessage"),"تم حجز الهامش كاملاً وفتح الصفقة فوراً بحجم مضاعف "+leverage+"x.","success");
+    }
+    await loadPaperMarket();
+  }catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
