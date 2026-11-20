@@ -154,6 +154,18 @@ const ensurePaperSchema = async (db) => {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_orders_user_created ON paper_orders(user_id,created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS paper_trades (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
+      direction TEXT NOT NULL CHECK(direction IN ('long','short')),
+      quantity_micro INTEGER NOT NULL CHECK(quantity_micro>0),
+      entry_price_micro INTEGER NOT NULL CHECK(entry_price_micro>0),
+      leverage INTEGER NOT NULL DEFAULT 20 CHECK(leverage=20),
+      margin_cents INTEGER NOT NULL CHECK(margin_cents>0),
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','liquidated')),
+      opened_at TEXT NOT NULL, closed_at TEXT, exit_price_micro INTEGER, pnl_cents INTEGER
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_trades_user_status ON paper_trades(user_id,status,opened_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS paper_ledger (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       order_id TEXT NOT NULL UNIQUE REFERENCES paper_orders(id) ON DELETE RESTRICT,
@@ -223,7 +235,11 @@ const runScheduledMarketBots = async (db) => {
     const noise=(bytes[0]/4294967295)*2-1;
     const bps=Math.max(-2500,Math.min(2500,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
     const previous=Number(bot.priceMicro);
-    const next=Math.max(1,Math.round(previous*(1+bps/10000)));
+    const base=await db.prepare("SELECT rate FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first();
+    const target=Number(base?.rate||0)*1000000;
+    const reversion=target>0?Math.max(-300,Math.min(300,Math.round(((target-previous)/target)*1200))):0;
+    const boundedNoise=Math.max(-120,Math.min(120,Math.round(noise*Number(bot.volatilityBps))));
+    const next=Math.max(1,Math.round(previous*(1+(reversion+boundedNoise)/10000)));
     if(!Number.isSafeInteger(next)||next===previous)continue;
     const now=new Date().toISOString();
     const batch=await db.batch([
@@ -305,8 +321,14 @@ const walletApi = async (request, env, url) => {
         FROM paper_orders o JOIN market_instruments i ON i.id=o.instrument_id
         WHERE o.user_id=? AND i.symbol='USD/SYP' ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all()
     ]);
+    const openTrades=await env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
+      t.entry_price_micro AS entryPriceMicro,t.leverage,t.margin_cents AS marginCents,
+      t.opened_at AS openedAt,i.symbol,p.price_micro AS currentPriceMicro
+      FROM paper_trades t JOIN market_instruments i ON i.id=t.instrument_id
+      JOIN market_prices p ON p.instrument_id=t.instrument_id
+      WHERE t.user_id=? AND t.status='open' ORDER BY t.opened_at DESC LIMIT 100`).bind(user.id).all();
     return json({ok:true,market:market.results||[],cashCents:account?.cashCents??0,
-      positions:positions.results||[],orders:orders.results||[]});
+      positions:positions.results||[],orders:orders.results||[],openTrades:openTrades.results||[]});
   }
 
   if (url.pathname === "/api/admin/market-bot" && request.method === "POST") {
@@ -395,6 +417,54 @@ const walletApi = async (request, env, url) => {
       FROM paper_ledger l JOIN market_instruments i ON i.id=l.instrument_id
       WHERE l.user_id=? AND i.symbol='USD/SYP' ORDER BY l.created_at DESC LIMIT 100`).bind(user.id).all();
     return json({ok:true,entries:rows.results||[]});
+  }
+
+
+  if (url.pathname === "/api/paper/trade-open" && request.method === "POST") {
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const instrumentId=String(body.instrumentId||""),direction=String(body.direction||"");
+    const quantity=Number(body.quantity),quantityMicro=Math.round(quantity*1000000);
+    if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||
+      !Number.isFinite(quantity)||quantity<=0||quantity>1000000||!Number.isSafeInteger(quantityMicro)||quantityMicro<=0)
+      return json({ok:false,error:"تحقق من الاتجاه والكمية"},400);
+    const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
+    if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
+    const notional=BigInt(instrument.priceMicro)*BigInt(quantityMicro);
+    const marginBig=(notional+199999999999n)/200000000000n;
+    if(marginBig<=0n||marginBig>9007199254740991n)return json({ok:false,error:"الهامش خارج النطاق"},400);
+    const marginCents=Number(marginBig),now=new Date().toISOString(),tradeId=crypto.randomUUID();
+    const results=await env.DB.batch([
+      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?").bind(marginCents,now,user.id,marginCents),
+      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at) SELECT ?,?,?,?,?,?,20,?,'open',? WHERE changes()=1")
+        .bind(tradeId,user.id,instrumentId,direction,quantityMicro,instrument.priceMicro,marginCents,now)
+    ]);
+    if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد التداول التجريبي لا يكفي للهامش"},409);
+    return json({ok:true,tradeId,direction,quantity,leverage:20,marginCents,entryPriceMicro:instrument.priceMicro});
+  }
+
+  if (url.pathname === "/api/paper/trade-close" && request.method === "POST") {
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const tradeId=String(body.tradeId||"");
+    if(!tradeId||tradeId.length>80)return json({ok:false,error:"رقم الصفقة غير صحيح"},400);
+    const trade=await env.DB.prepare("SELECT id,instrument_id,direction,quantity_micro AS quantityMicro,entry_price_micro AS entryPriceMicro,margin_cents AS marginCents FROM paper_trades WHERE id=? AND user_id=? AND status='open'").bind(tradeId,user.id).first();
+    if(!trade)return json({ok:false,error:"الصفقة مغلقة أو غير موجودة"},404);
+    const price=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first();
+    if(!price)return json({ok:false,error:"السعر الحالي غير متاح"},409);
+    const delta=BigInt(price.priceMicro)-BigInt(trade.entryPriceMicro);
+    const signed=trade.direction==="long"?delta:-delta;
+    let pnlBig=signed*BigInt(trade.quantityMicro)/10000000000n;
+    const margin=BigInt(trade.marginCents);
+    if(pnlBig < -margin)pnlBig=-margin;
+    if(pnlBig > 9007199254740991n-margin)pnlBig=9007199254740991n-margin;
+    const pnlCents=Number(pnlBig),releaseCents=Number(margin+pnlBig),now=new Date().toISOString();
+    const results=await env.DB.batch([
+      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,user.id,releaseCents,tradeId,user.id),
+      env.DB.prepare("UPDATE paper_trades SET status='closed',closed_at=?,exit_price_micro=?,pnl_cents=? WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,price.priceMicro,pnlCents,tradeId,user.id)
+    ]);
+    if(!results?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إغلاق الصفقة؛ حدّث الصفحة وحاول مجدداً"},409);
+    return json({ok:true,tradeId,pnlCents,releaseCents,exitPriceMicro:price.priceMicro});
   }
 
   if (url.pathname === "/api/paper/order" && request.method === "POST") {
