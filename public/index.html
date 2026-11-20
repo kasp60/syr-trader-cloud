@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101827">
   <meta name="description" content="SYR TRADER - منصة التداول">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SYR TRADER">
   <title>SYR TRADER</title>
   <style>
     :root{color-scheme:dark;--bg:#101d33;--panel:#29496b;--line:#547da5;--text:#ffffff;--muted:#d5e6f7;--accent:#27f0bd;--danger:#ff747f}
@@ -1136,6 +1141,14 @@
     .catch(() => showAuth());
   setMode("login");
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+        .catch((error) => console.warn("App offline support could not be enabled:", error));
+    }, { once: true });
+  }
 </script>
 </body>
 </html>
