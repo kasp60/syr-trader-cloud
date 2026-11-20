@@ -338,6 +338,9 @@ class MainActivity : Activity() {
                     val transfer = actionButton("تحويل ليرة إلى عضو")
                     actions.addView(transfer, fieldParams())
                     transfer.setOnClickListener { showTransferDialog(cookie) }
+                    val exchange = actionButton("تحويل بين الدولار والليرة")
+                    actions.addView(exchange, fieldParams())
+                    exchange.setOnClickListener { showExchangeDialog(cookie) }
                     content.addView(actions, match())
                     val requests = finance.optJSONArray("deposits")
                     val requestTitle = text("طلبات الإيداع", 17, teal, true)
@@ -431,6 +434,27 @@ class MainActivity : Activity() {
                     android.widget.Toast.makeText(this, "تحقق من المبلغ وبيانات الاستلام", android.widget.Toast.LENGTH_LONG).show()
                 } else sendWalletAction(cookie, "/api/wallet/withdrawal",
                     JSONObject().put("amount", whole * 100L).put("payoutDetails", payout), "تم إرسال طلب السحب")
+            }.show()
+    }
+
+    private fun showExchangeDialog(cookie: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("اختر اتجاه التحويل")
+            .setItems(arrayOf("من الدولار إلى الليرة", "من الليرة إلى الدولار")) { _, which ->
+                val direction = if (which == 0) "USD_TO_SYP" else "SYP_TO_USD"
+                val amount = input("المبلغ", false)
+                amount.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("مبلغ التحويل")
+                    .setView(amount)
+                    .setNegativeButton("إلغاء", null)
+                    .setPositiveButton("تحويل") { _, _ ->
+                        val value = amount.text.toString().trim().toDoubleOrNull()
+                        if (value == null || value <= 0) {
+                            android.widget.Toast.makeText(this, "أدخل مبلغاً صحيحاً", android.widget.Toast.LENGTH_LONG).show()
+                        } else sendWalletAction(cookie, "/api/wallet/exchange",
+                            JSONObject().put("direction", direction).put("amount", value), "تم تنفيذ تحويل العملة")
+                    }.show()
             }.show()
     }
 
