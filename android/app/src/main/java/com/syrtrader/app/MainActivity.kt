@@ -120,10 +120,68 @@ class MainActivity : Activity() {
                 }
             }
         }
+        val register = actionButton("إنشاء حساب جديد")
+        card.addView(register, fieldParams())
+        register.setOnClickListener { showRegister() }
         val footer = text("منصة SYR TRADER", 12, muted)
         footer.gravity = Gravity.CENTER
         footer.setPadding(0, dp(24), 0, 0)
         root.addView(footer, match())
+        setContentView(root)
+    }
+
+    private fun showRegister() {
+        root = baseLayout()
+        addBrand(root)
+        val card = card()
+        root.addView(card, match())
+        val heading = text("إنشاء حساب جديد", 23, Color.WHITE, true)
+        heading.gravity = Gravity.RIGHT
+        card.addView(heading, match())
+        val name = input("الاسم الكامل", false)
+        name.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        card.addView(fieldLabel("الاسم الكامل"))
+        card.addView(name, fieldParams())
+        val email = input("البريد الإلكتروني", false)
+        card.addView(fieldLabel("البريد الإلكتروني"))
+        card.addView(email, fieldParams())
+        val password = input("كلمة المرور — 10 أحرف على الأقل", true)
+        card.addView(fieldLabel("كلمة المرور"))
+        card.addView(password, fieldParams())
+        val message = text("أنشئ حسابك للوصول إلى المنصة", 12, muted)
+        message.gravity = Gravity.CENTER
+        card.addView(message, fieldParams())
+        val submit = actionButton("إنشاء الحساب")
+        card.addView(submit, fieldParams())
+        submit.setOnClickListener {
+            val displayName = name.text.toString().trim()
+            val userEmail = email.text.toString().trim()
+            val userPassword = password.text.toString()
+            if (displayName.length !in 2..60 || userEmail.isBlank() || userPassword.length !in 10..128) {
+                message.text = "تحقق من الاسم والبريد وكلمة المرور (10 أحرف على الأقل)"
+                return@setOnClickListener
+            }
+            submit.isEnabled = false
+            message.text = "جارٍ إنشاء الحساب..."
+            executor.execute {
+                try {
+                    val result = requestWithCookie("POST", "/api/auth/register",
+                        JSONObject().put("displayName", displayName).put("email", userEmail).put("password", userPassword).toString())
+                    val cookie = result.second ?: throw Exception("لم يتم إنشاء جلسة آمنة")
+                    saveSession(cookie)
+                    val profile = request("GET", "/api/auth/me", null, cookie)
+                    runOnUiThread { showDashboard(profile, cookie) }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        message.text = e.message ?: "تعذر إنشاء الحساب"
+                        submit.isEnabled = true
+                    }
+                }
+            }
+        }
+        val back = actionButton("العودة لتسجيل الدخول")
+        card.addView(back, fieldParams())
+        back.setOnClickListener { showLogin() }
         setContentView(root)
     }
 
