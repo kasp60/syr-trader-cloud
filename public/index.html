@@ -269,14 +269,14 @@
         <section id="page-trading" class="app-page">
         <section id="tradingWorkspace" class="subpanel trade-workspace">
           <h3>التداول بالليرة</h3>
-          <p class="muted">سوق واحد للدولار مقابل الليرة. المدير يحدد سعر الصرف الأولي، وبعدها يتحرك البوت تلقائياً كل دقيقة على الخادم. جميع قيم التداول معروضة بالليرة، والأسعار محاكاة وليست أسعاراً مباشرة.</p>
-          <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select><span id="chartBotStatus" class="bot-pill">البوت بانتظار سعر الإدارة</span></div>
-          <div class="chart-controls" aria-label="إعدادات الشارت"><div class="chart-control-row chart-range-row" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة الزمنية:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button></div><div class="chart-control-row chart-count-row" aria-label="عدد الشموع"><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div></div><div class="chart-panel"><div class="chart-heading"><strong>مخطط الشموع اليابانية · USD / SYP</strong><span id="chartLastPrice" class="price-up">بانتظار السعر</span></div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div><p id="chartFootnote" class="chart-footnote">المؤشرات محسوبة من نقاط السعر المسجلة داخل المنصة. لا يوجد حجم تداول سوقي حقيقي لأن السوق هنا محاكاة داخلية.</p>
+          <p class="muted">تداول الدولار مقابل الليرة ضمن سوق المنصة، مع عرض الأسعار ومؤشرات السوق ومتابعة صفقاتك من مكان واحد.</p>
+          <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select></div>
+          <div class="chart-controls" aria-label="إعدادات الشارت"><div class="chart-control-row chart-range-row" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة الزمنية:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button></div><div class="chart-control-row chart-count-row" aria-label="عدد الشموع"><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div></div><div class="chart-panel"><div class="chart-heading"><strong>مخطط الشموع اليابانية · USD / SYP</strong><span id="chartLastPrice" class="price-up">بانتظار السعر</span></div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div><p id="chartFootnote" class="chart-footnote">الأسعار داخلية ويحددها نظام المنصة والإدارة، ولا تمثل أسعاراً مباشرة أو تنفيذ أوامر في بورصات خارجية.</p>
           <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
           <div class="subpanel">
             <h3>فتح صفقة</h3>
-            <div class="trade-wallet-balances"><div><span>رصيد الليرة</span><strong id="terminalSypBalance">—</strong></div><div><span>رصيد الدولار</span><strong id="terminalUsdBalance">—</strong></div></div><div class="notice">الشراء يحجز الهامش من محفظة الليرة، والبيع يحجزه من محفظة الدولار. الخصم والأرباح والخسائر تُسجّل فعلياً في رصيد محفظتك داخل المنصة، أما حركة السعر فهي محاكاة يحددها المدير والبوت. لكل صفقة سعر تصفية تلقائي.</div>
+            <div class="trade-wallet-balances"><div><span>رصيد الليرة</span><strong id="terminalSypBalance">—</strong></div><div><span>رصيد الدولار</span><strong id="terminalUsdBalance">—</strong></div></div><div class="notice">يُحجز الهامش من المحفظة المناسبة، وتُسجّل الأرباح والخسائر في رصيدك داخل المنصة. تُحتسب نتائج الصفقات وفق أسعار السوق المعروضة في SYR TRADER، ولا تُنفذ الأوامر في بورصات خارجية.</div>
             <form id="terminalOrderForm">
               <label>نوع الصفقة</label><div class="trade-side-actions"><button type="button" id="terminalBuyButton" class="trade-side-button buy active" aria-pressed="true">شراء · LONG</button><button type="button" id="terminalSellButton" class="trade-side-button sell" aria-pressed="false">بيع · SHORT</button></div><input id="terminalSide" type="hidden" value="buy">
               <label for="terminalOrderType">طريقة تنفيذ الصفقة</label><select id="terminalOrderType"><option value="market">تنفيذ فوري بسعر السوق</option><option value="limit">أمر معلّق بسعر أحدده</option></select>
@@ -392,9 +392,9 @@
       <article class="card"><h2>الأسواق</h2><p>سيتم عرض الأسعار بعد ربط مصدر بيانات موثوق والتحقق منه.</p></article>
       <article class="card"><h2>المحافظ</h2><p>لكل مستخدم محفظته وسجل حركاته. الرصيد الجديد يبدأ بصفر.</p></article>
     </section>
-    <div class="notice">الإيداع والسحب والتحويلات تخضع لمراجعة الإدارة. التداول في هذا القسم تجريبي وبالليرة فقط.</div>
+    <div class="notice">تخضع طلبات الإيداع والسحب لمراجعة الإدارة. تُعرض أرصدة التداول بالليرة وفق سعر الصرف المعتمد في المنصة.</div>
   </main>
-  <footer>SYR TRADER · Cloudflare Workers
+  <footer>SYR TRADER
     <span aria-hidden="true"> · </span>
     <a href="https://t.me/+GWpNf6zRupwwM2Zk" target="_blank" rel="noopener noreferrer" aria-label="الانضمام إلى قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
   </footer>
@@ -865,7 +865,7 @@
       drawMarketChart(chart.points||[],board.openTrades||[]);const item=board.market.find(x=>x.id===id);
 
       if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
-      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;$("chartBotStatus").textContent=botEnabled?"البوت يعمل بالخلفية":"بانتظار سعر الإدارة";$("chartBotStatus").classList.toggle("running",botEnabled);
+      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;if($("chartBotStatus")){$("chartBotStatus").textContent=botEnabled?"السوق متاح":"يتم تحديث السوق";$("chartBotStatus").classList.toggle("running",botEnabled);}
     }catch(error){$("chartUpdated").textContent=error.message;}
   };
   document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet"){loadLedger();loadFinanceRequests();}if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();loadAdminFinanceRequests();}}));
@@ -1019,13 +1019,13 @@
   $("paperOrderForm").addEventListener("submit", async event => {
     event.preventDefault();
     const button=$("paperOrderForm").querySelector("button[type=submit]"); button.disabled=true;
-    message($("paperMessage"),"جارٍ تنفيذ الأمر التجريبي...");
+    message($("paperMessage"),"جارٍ تنفيذ الأمر...");
     try {
       const result=await api("/api/paper/order",{method:"POST",body:JSON.stringify({
         instrumentId:$("paperInstrument").value,side:$("paperSide").value,quantity:Number($("paperQuantity").value)
       })});
       $("paperQuantity").value="";
-      message($("paperMessage"),"تم تنفيذ "+(result.side==="buy"?"الشراء":"البيع")+" التجريبي بنجاح.","success");
+      message($("paperMessage"),"تم تنفيذ "+(result.side==="buy"?"الشراء":"البيع")+" بنجاح.","success");
       await loadPaperMarket();
       await loadPaperHistory();
     } catch(error) { message($("paperMessage"),error.message,"error"); }
