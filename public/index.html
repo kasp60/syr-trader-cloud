@@ -68,6 +68,21 @@
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
         <div class="form-actions"><button type="button" id="logoutButton">تسجيل الخروج</button></div>
         <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
+        <section id="paperMarketPanel" class="subpanel">
+          <h3>التداول التجريبي</h3>
+          <p class="muted">رصيد افتراضي منفصل عن محافظك الحقيقية. الأسعار يحددها المدير وليست أسعار سوق مباشرة.</p>
+          <div class="account-line"><span>الرصيد التجريبي بالدولار</span><strong id="paperCash">10000.00 USD</strong></div>
+          <div id="paperMarketList" class="muted">جارٍ تحميل السوق...</div>
+          <form id="paperOrderForm">
+            <label for="paperInstrument">الأداة</label><select id="paperInstrument" required></select>
+            <label for="paperSide">نوع الأمر</label><select id="paperSide"><option value="buy">شراء تجريبي</option><option value="sell">بيع تجريبي</option></select>
+            <label for="paperQuantity">الكمية</label><input id="paperQuantity" type="number" min="0.000001" step="0.000001" required>
+            <div class="form-actions"><button class="primary" type="submit">تنفيذ الأمر التجريبي</button></div>
+          </form>
+          <div id="paperMessage" class="message" role="status" aria-live="polite"></div>
+          <h3 style="margin-top:20px">المراكز التجريبية</h3><div id="paperPositions" class="muted">—</div>
+          <h3 style="margin-top:20px">آخر الأوامر التجريبية</h3><div id="paperOrders" class="muted">—</div>
+        </section>
         <section id="ledgerPanel" class="subpanel">
           <h3>آخر حركات المحفظة</h3>
           <div id="ledgerList" class="muted">جارٍ تحميل الحركات...</div>
@@ -89,6 +104,18 @@
             <input id="adjustNote" maxlength="240" placeholder="سبب التعديل">
             <div class="form-actions"><button class="primary" type="submit">تأكيد الحركة</button></div>
           </form>
+          <h3 style="margin-top:22px">إدارة أدوات السوق التجريبي</h3>
+          <form id="instrumentForm">
+            <label for="instrumentSymbol">رمز الأداة (مثل BTC)</label><input id="instrumentSymbol" maxlength="20" required>
+            <label for="instrumentName">اسم الأداة</label><input id="instrumentName" maxlength="60" required>
+            <div class="form-actions"><button type="submit">إضافة أداة</button></div>
+          </form>
+          <form id="marketPriceForm">
+            <label for="priceInstrument">الأداة</label><select id="priceInstrument" required></select>
+            <label for="marketPrice">السعر بالدولار</label><input id="marketPrice" type="number" min="0.000001" step="0.000001" required>
+            <div class="form-actions"><button type="submit">حفظ السعر التجريبي</button></div>
+          </form>
+          <div id="marketAdminMessage" class="message" role="status" aria-live="polite"></div>
           <h3 style="margin-top:22px">سعر صرف الدولار مقابل الليرة</h3>
           <label for="exchangeRateInput">كم ليرة تساوي دولاراً واحداً؟</label>
           <input id="exchangeRateInput" type="number" min="0.000001" step="0.01" placeholder="أدخل السعر المعتمد">
@@ -141,6 +168,7 @@
     $("exchangeRateView").textContent = rateText;
     if (data.user.role === "admin" && data.exchangeRate?.rate > 0) $("exchangeRateInput").value = data.exchangeRate.rate;
     loadLedger();
+    loadPaperMarket();
     if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); }
     else $("adminPanel").classList.add("hidden");
   };
@@ -233,6 +261,33 @@
       if (!data.wallets.length) list.textContent = "لا توجد محافظ.";
     } catch (error) { list.textContent = error.message; }
   };
+
+  const loadPaperMarket = async () => {
+    try {
+      const data = await api("/api/market/board", { headers: {} });
+      $("paperCash").textContent = (Number(data.cashCents || 0) / 100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " USD";
+      const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument");
+      market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren();
+      data.market.forEach(item => {
+        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" USD" : "السعر غير محدد";
+        addTextRow(market,item.symbol+" · "+item.name,price);
+        const opt=document.createElement("option"); opt.value=item.id; opt.textContent=item.symbol+" · "+item.name;
+        tradeSelect.appendChild(opt);
+        const adminOpt=opt.cloneNode(true); adminSelect.appendChild(adminOpt);
+      });
+      if(!data.market.length) market.textContent="لا توجد أدوات سوق بعد. يمكن للمدير إضافتها من لوحة الإدارة.";
+      const positions=$("paperPositions"); positions.replaceChildren();
+      if(!data.positions.length) positions.textContent="لا توجد مراكز تجريبية مفتوحة.";
+      else data.positions.forEach(p=>addTextRow(positions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
+      const orders=$("paperOrders"); orders.replaceChildren();
+      if(!data.orders.length) orders.textContent="لا توجد أوامر تجريبية بعد.";
+      else data.orders.forEach(o=>{
+        const qty=(Number(o.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+        const total=(Number(o.totalCents)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" USD";
+        addTextRow(orders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol+" · "+qty,total);
+      });
+    } catch(error) { $("paperMarketList").textContent=error.message; }
+  };
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
@@ -314,6 +369,42 @@
       message($("rateMessage"), "تم حفظ سعر الصرف.", "success");
     } catch (error) { message($("rateMessage"), error.message, "error"); }
     finally { button.disabled = false; }
+  });
+
+  $("paperOrderForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button=$("paperOrderForm").querySelector("button[type=submit]"); button.disabled=true;
+    message($("paperMessage"),"جارٍ تنفيذ الأمر التجريبي...");
+    try {
+      const result=await api("/api/paper/order",{method:"POST",body:JSON.stringify({
+        instrumentId:$("paperInstrument").value,side:$("paperSide").value,quantity:Number($("paperQuantity").value)
+      })});
+      $("paperQuantity").value="";
+      message($("paperMessage"),"تم تنفيذ "+(result.side==="buy"?"الشراء":"البيع")+" التجريبي بنجاح.","success");
+      await loadPaperMarket();
+    } catch(error) { message($("paperMessage"),error.message,"error"); }
+    finally { button.disabled=false; }
+  });
+  $("instrumentForm").addEventListener("submit",async event=>{
+    event.preventDefault(); const button=$("instrumentForm").querySelector("button"); button.disabled=true;
+    try {
+      await api("/api/admin/market-instrument",{method:"POST",body:JSON.stringify({
+        symbol:$("instrumentSymbol").value,name:$("instrumentName").value
+      })});
+      $("instrumentSymbol").value=""; $("instrumentName").value="";
+      message($("marketAdminMessage"),"تمت إضافة الأداة.","success"); await loadPaperMarket();
+    } catch(error) { message($("marketAdminMessage"),error.message,"error"); }
+    finally { button.disabled=false; }
+  });
+  $("marketPriceForm").addEventListener("submit",async event=>{
+    event.preventDefault(); const button=$("marketPriceForm").querySelector("button"); button.disabled=true;
+    try {
+      await api("/api/admin/market-price",{method:"POST",body:JSON.stringify({
+        instrumentId:$("priceInstrument").value,price:Number($("marketPrice").value)
+      })});
+      message($("marketAdminMessage"),"تم حفظ السعر التجريبي.","success"); await loadPaperMarket();
+    } catch(error) { message($("marketAdminMessage"),error.message,"error"); }
+    finally { button.disabled=false; }
   });
   $("logoutButton").addEventListener("click", async () => {
     try {
