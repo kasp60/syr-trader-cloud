@@ -160,8 +160,10 @@ const ensurePaperSchema = async (db) => {
       direction TEXT NOT NULL CHECK(direction IN ('long','short')),
       quantity_micro INTEGER NOT NULL CHECK(quantity_micro>0),
       entry_price_micro INTEGER NOT NULL CHECK(entry_price_micro>0),
-      leverage INTEGER NOT NULL DEFAULT 20 CHECK(leverage=20),
+      leverage INTEGER NOT NULL DEFAULT 1 CHECK(leverage BETWEEN 1 AND 20),
       margin_cents INTEGER NOT NULL CHECK(margin_cents>0),
+      margin_asset_symbol TEXT NOT NULL DEFAULT 'SYP' CHECK(margin_asset_symbol IN ('SYP','USD')),
+      liquidation_price_micro INTEGER NOT NULL DEFAULT 1 CHECK(liquidation_price_micro>0),
       status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','liquidated')),
       opened_at TEXT NOT NULL, closed_at TEXT, exit_price_micro INTEGER, pnl_cents INTEGER
     )`),
@@ -179,6 +181,29 @@ const ensurePaperSchema = async (db) => {
     db.prepare("CREATE TABLE IF NOT EXISTS market_price_history (id TEXT PRIMARY KEY, instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE CASCADE, price_micro INTEGER NOT NULL CHECK(price_micro > 0), source TEXT NOT NULL CHECK(source IN ('manual','bot')), created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_market_history_instrument_time ON market_price_history(instrument_id,created_at)")
   ]);
+  const tradeTable=await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='paper_trades'").first();
+  if(String(tradeTable?.sql||"").includes("CHECK(leverage=20)")){
+    await db.batch([
+      db.prepare("ALTER TABLE paper_trades RENAME TO paper_trades_legacy"),
+      db.prepare(`CREATE TABLE paper_trades (
+        id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
+        direction TEXT NOT NULL CHECK(direction IN ('long','short')),quantity_micro INTEGER NOT NULL CHECK(quantity_micro>0),
+        entry_price_micro INTEGER NOT NULL CHECK(entry_price_micro>0),leverage INTEGER NOT NULL DEFAULT 1 CHECK(leverage BETWEEN 1 AND 20),
+        margin_cents INTEGER NOT NULL CHECK(margin_cents>0),
+        margin_asset_symbol TEXT NOT NULL DEFAULT 'SYP' CHECK(margin_asset_symbol IN ('SYP','USD')),
+        liquidation_price_micro INTEGER NOT NULL DEFAULT 1 CHECK(liquidation_price_micro>0),
+        status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','liquidated')),
+        opened_at TEXT NOT NULL,closed_at TEXT,exit_price_micro INTEGER,pnl_cents INTEGER
+      )`),
+      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at,closed_at,exit_price_micro,pnl_cents) SELECT id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,CASE WHEN leverage BETWEEN 1 AND 20 THEN leverage ELSE 1 END,margin_cents,status,opened_at,closed_at,exit_price_micro,pnl_cents FROM paper_trades_legacy"),
+      db.prepare("DROP TABLE paper_trades_legacy"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_trades_user_status ON paper_trades(user_id,status,opened_at)")
+    ]);
+  }
+  const tradeColumns=await db.prepare("PRAGMA table_info(paper_trades)").all();
+  if(!(tradeColumns.results||[]).some(c=>c.name==="margin_asset_symbol"))await db.prepare("ALTER TABLE paper_trades ADD COLUMN margin_asset_symbol TEXT NOT NULL DEFAULT 'SYP'").run();
+  if(!(tradeColumns.results||[]).some(c=>c.name==="liquidation_price_micro"))await db.prepare("ALTER TABLE paper_trades ADD COLUMN liquidation_price_micro INTEGER NOT NULL DEFAULT 1").run();
 };
 
 const ensureFinanceSchema = async (db) => {
@@ -253,8 +278,23 @@ const runScheduledMarketBots = async (db) => {
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0)changed++;
   }
+  await settleLiquidatedTrades(db);
   return {checked:(result.results||[]).length,changed};
 };
+
+const settleLiquidatedTrades = async (db) => {
+  const rows=await db.prepare(`SELECT t.id,t.user_id AS userId,t.direction,t.liquidation_price_micro AS liquidationPriceMicro,
+    p.price_micro AS currentPriceMicro FROM paper_trades t JOIN market_prices p ON p.instrument_id=t.instrument_id WHERE t.status='open'`).all();
+  let liquidated=0;
+  for(const t of (rows.results||[])){
+    const price=Number(t.currentPriceMicro),triggered=t.direction==="long"?price<=Number(t.liquidationPriceMicro):price>=Number(t.liquidationPriceMicro);
+    if(!triggered)continue;
+    const result=await db.prepare("UPDATE paper_trades SET status='liquidated',closed_at=?,exit_price_micro=?,pnl_cents=-margin_cents WHERE id=? AND user_id=? AND status='open'").bind(new Date().toISOString(),price,t.id,t.userId).run();
+    if(Number(result.meta?.changes||0)>0)liquidated++;
+  }
+  return liquidated;
+};
+
 const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
@@ -325,14 +365,23 @@ const walletApi = async (request, env, url) => {
         FROM paper_orders o JOIN market_instruments i ON i.id=o.instrument_id
         WHERE o.user_id=? AND i.symbol='USD/SYP' ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all()
     ]);
-    const openTrades=await env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
-      t.entry_price_micro AS entryPriceMicro,t.leverage,t.margin_cents AS marginCents,
-      t.opened_at AS openedAt,i.symbol,p.price_micro AS currentPriceMicro
-      FROM paper_trades t JOIN market_instruments i ON i.id=t.instrument_id
-      JOIN market_prices p ON p.instrument_id=t.instrument_id
-      WHERE t.user_id=? AND t.status='open' ORDER BY t.opened_at DESC LIMIT 100`).bind(user.id).all();
-    return json({ok:true,market:market.results||[],cashCents:account?.cashCents??0,
-      positions:positions.results||[],orders:orders.results||[],openTrades:openTrades.results||[]});
+    await settleLiquidatedTrades(env.DB);
+    const [openTrades,closedTrades,walletRows]=await Promise.all([
+      env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,
+        t.leverage,t.margin_cents AS marginCents,t.margin_asset_symbol AS marginAssetSymbol,
+        t.liquidation_price_micro AS liquidationPriceMicro,t.opened_at AS openedAt,i.symbol,p.price_micro AS currentPriceMicro
+        FROM paper_trades t JOIN market_instruments i ON i.id=t.instrument_id JOIN market_prices p ON p.instrument_id=t.instrument_id
+        WHERE t.user_id=? AND t.status='open' ORDER BY t.opened_at DESC LIMIT 100`).bind(user.id).all(),
+      env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,
+        t.exit_price_micro AS exitPriceMicro,t.leverage,t.margin_cents AS marginCents,t.margin_asset_symbol AS marginAssetSymbol,
+        t.liquidation_price_micro AS liquidationPriceMicro,t.pnl_cents AS pnlCents,t.status,t.opened_at AS openedAt,
+        t.closed_at AS closedAt,i.symbol FROM paper_trades t JOIN market_instruments i ON i.id=t.instrument_id
+        WHERE t.user_id=? AND t.status IN ('closed','liquidated') ORDER BY t.closed_at DESC LIMIT 50`).bind(user.id).all(),
+      env.DB.prepare(`SELECT a.symbol,w.balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id
+        WHERE w.user_id=? AND a.symbol IN ('SYP','USD')`).bind(user.id).all()
+    ]);
+    return json({ok:true,market:market.results||[],cashCents:account?.cashCents??0,wallets:walletRows.results||[],
+      positions:positions.results||[],orders:orders.results||[],openTrades:openTrades.results||[],closedTrades:closedTrades.results||[]});
   }
 
   if (url.pathname === "/api/admin/market-bot" && request.method === "POST") {
@@ -428,26 +477,32 @@ const walletApi = async (request, env, url) => {
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const instrumentId=String(body.instrumentId||""),direction=String(body.direction||"");
-    const quantity=Number(body.quantity),quantityMicro=Math.round(quantity*1000000);
-    const leverage=Number(body.leverage);
-    if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||
-      !Number.isFinite(quantity)||quantity<=0||quantity>1000000||!Number.isSafeInteger(quantityMicro)||quantityMicro<=0||
-      !Number.isInteger(leverage)||leverage<1||leverage>20)
+    const quantity=Number(body.quantity),quantityMicro=Math.round(quantity*1000000),leverage=Number(body.leverage);
+    if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||!Number.isFinite(quantity)||quantity<=0||quantity>1000000||!Number.isSafeInteger(quantityMicro)||quantityMicro<=0||!Number.isInteger(leverage)||leverage<1||leverage>20)
       return json({ok:false,error:"تحقق من الاتجاه والكمية والرافعة (من 1x إلى 20x)"},400);
     const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
-    const notional=BigInt(instrument.priceMicro)*BigInt(quantityMicro);
-    const marginDenominator=10000000000n*BigInt(leverage);
-    const marginBig=(notional+marginDenominator-1n)/marginDenominator;
+    const marginAssetSymbol=direction==="long"?"SYP":"USD";
+    const marginBig=direction==="long"
+      ? (BigInt(instrument.priceMicro)*BigInt(quantityMicro)+10000000000n*BigInt(leverage)-1n)/(10000000000n*BigInt(leverage))
+      : (BigInt(quantityMicro)*100n+1000000n*BigInt(leverage)-1n)/(1000000n*BigInt(leverage));
     if(marginBig<=0n||marginBig>9007199254740991n)return json({ok:false,error:"الهامش خارج النطاق"},400);
-    const marginCents=Number(marginBig),now=new Date().toISOString(),tradeId=crypto.randomUUID();
-    const results=await env.DB.batch([
-      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?").bind(marginCents,now,user.id,marginCents),
-      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at) SELECT ?,?,?,?,?,?,?,?,'open',? WHERE changes()=1")
-        .bind(tradeId,user.id,instrumentId,direction,quantityMicro,instrument.priceMicro,leverage,marginCents,now)
+    const marginCents=Number(marginBig),entry=BigInt(instrument.priceMicro);
+    const liquidationPriceMicro=Number((direction==="long"?entry*BigInt(leverage-1)/BigInt(leverage):entry*BigInt(leverage+1)/BigInt(leverage))||1n);
+    const now=new Date().toISOString(),tradeId=crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare("INSERT OR IGNORE INTO assets(id,symbol,name,is_active) VALUES('syr-lira','SYP','ليرة',1),('usd-dollar','USD','دولار أمريكي',1)"),
+      env.DB.prepare("INSERT OR IGNORE INTO wallets(id,user_id,asset_id,balance_minor) SELECT lower(hex(randomblob(16))),?,a.id,0 FROM assets a WHERE a.symbol IN ('SYP','USD') AND NOT EXISTS(SELECT 1 FROM wallets w WHERE w.user_id=? AND w.asset_id=a.id)").bind(user.id,user.id)
     ]);
-    if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد التداول التجريبي لا يكفي للهامش"},409);
-    return json({ok:true,tradeId,direction,quantity,leverage,marginCents,entryPriceMicro:instrument.priceMicro});
+    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,marginAssetSymbol).first();
+    if(!wallet)return json({ok:false,error:"محفظة العملة المطلوبة غير موجودة"},409);
+    const results=await env.DB.batch([
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(marginCents,now,wallet.id,marginCents),
+      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?, 'open',? WHERE changes()=1").bind(tradeId,user.id,instrumentId,direction,quantityMicro,instrument.priceMicro,leverage,marginCents,marginAssetSymbol,liquidationPriceMicro,now),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع")+" تجريبية",tradeId)
+    ]);
+    if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
+    return json({ok:true,tradeId,direction,quantity,leverage,marginCents,marginAssetSymbol,entryPriceMicro:instrument.priceMicro,liquidationPriceMicro});
   }
 
   if (url.pathname === "/api/paper/trade-close" && request.method === "POST") {
@@ -455,23 +510,24 @@ const walletApi = async (request, env, url) => {
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const tradeId=String(body.tradeId||"");
     if(!tradeId||tradeId.length>80)return json({ok:false,error:"رقم الصفقة غير صحيح"},400);
-    const trade=await env.DB.prepare("SELECT id,instrument_id,direction,quantity_micro AS quantityMicro,entry_price_micro AS entryPriceMicro,margin_cents AS marginCents FROM paper_trades WHERE id=? AND user_id=? AND status='open'").bind(tradeId,user.id).first();
-    if(!trade)return json({ok:false,error:"الصفقة مغلقة أو غير موجودة"},404);
+    const trade=await env.DB.prepare("SELECT id,instrument_id,direction,quantity_micro AS quantityMicro,entry_price_micro AS entryPriceMicro,margin_cents AS marginCents,margin_asset_symbol AS marginAssetSymbol FROM paper_trades WHERE id=? AND user_id=? AND status='open'").bind(tradeId,user.id).first();
+    if(!trade)return json({ok:false,error:"الصفقة مغلقة أو تمت تصفيتها أو غير موجودة"},404);
     const price=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first();
     if(!price)return json({ok:false,error:"السعر الحالي غير متاح"},409);
     const delta=BigInt(price.priceMicro)-BigInt(trade.entryPriceMicro);
-    const signed=trade.direction==="long"?delta:-delta;
-    let pnlBig=signed*BigInt(trade.quantityMicro)/10000000000n;
-    const margin=BigInt(trade.marginCents);
-    if(pnlBig < -margin)pnlBig=-margin;
-    if(pnlBig > 9007199254740991n-margin)pnlBig=9007199254740991n-margin;
-    const pnlCents=Number(pnlBig),releaseCents=Number(margin+pnlBig),now=new Date().toISOString();
+    const rawPnl=trade.direction==="long"?delta*BigInt(trade.quantityMicro)/10000000000n:BigInt(trade.quantityMicro)*(-delta)*100n/(BigInt(trade.entryPriceMicro)*1000000n);
+    const margin=BigInt(trade.marginCents),pnl=rawPnl < -margin ? -margin : rawPnl;
+    const safePnl=pnl>9007199254740991n-margin?9007199254740991n-margin:pnl;
+    const pnlCents=Number(safePnl),releaseCents=Number(margin+safePnl),now=new Date().toISOString();
+    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,trade.marginAssetSymbol).first();
+    if(!wallet)return json({ok:false,error:"محفظة الصفقة غير موجودة"},409);
     const results=await env.DB.batch([
-      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,user.id,releaseCents,tradeId,user.id),
-      env.DB.prepare("UPDATE paper_trades SET status='closed',closed_at=?,exit_price_micro=?,pnl_cents=? WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,price.priceMicro,pnlCents,tradeId,user.id)
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND balance_minor<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,wallet.id,releaseCents,tradeId,user.id),
+      env.DB.prepare("UPDATE paper_trades SET status='closed',closed_at=?,exit_price_micro=?,pnl_cents=? WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,price.priceMicro,pnlCents,tradeId,user.id),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE changes()=1 AND ?>0").bind(crypto.randomUUID(),wallet.id,releaseCents,"paper-trade:"+tradeId+":settlement",user.id,"تسوية صفقة مغلقة",releaseCents)
     ]);
     if(!results?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إغلاق الصفقة؛ حدّث الصفحة وحاول مجدداً"},409);
-    return json({ok:true,tradeId,pnlCents,releaseCents,exitPriceMicro:price.priceMicro});
+    return json({ok:true,tradeId,pnlCents,releaseCents,marginAssetSymbol:trade.marginAssetSymbol,exitPriceMicro:price.priceMicro});
   }
 
   if (url.pathname === "/api/paper/order" && request.method === "POST") {
