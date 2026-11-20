@@ -366,7 +366,7 @@ class MainActivity : Activity() {
     private fun dashboardContent(): LinearLayout? {
         val scroll = root.getChildAt(0) as? ScrollView ?: return null
         val page = scroll.getChildAt(0) as? LinearLayout ?: return null
-        return page.getChildAt(3) as? LinearLayout
+        return page.getChildAt(6) as? LinearLayout
     }
 
     private fun showError(content: LinearLayout, message: String?) {
