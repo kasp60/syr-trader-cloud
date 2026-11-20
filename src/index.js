@@ -162,11 +162,35 @@ const walletApi = async (request, env, url) => {
     return json({ ok: true, userId, status });
   }
 
+  if (url.pathname === "/api/market/rate" && request.method === "GET") {
+    const rate = await env.DB.prepare(
+      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
+    ).first();
+    return json({ ok: true, rate: rate || null });
+  }
+
+  if (url.pathname === "/api/admin/exchange-rate" && request.method === "POST") {
+    if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+    let body;
+    try { body = await readJson(request); } catch { return json({ ok: false, error: "بيانات الطلب غير صحيحة" }, 400); }
+    const rate = Number(body.rate);
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 1000000000) {
+      return json({ ok: false, error: "سعر الصرف غير صحيح" }, 400);
+    }
+    await env.DB.prepare(
+      `INSERT INTO exchange_rates (id, base_symbol, quote_symbol, rate, updated_by, updated_at)
+       VALUES ('usd-syp','USD','SYP',?,?,?)
+       ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate, updated_by=excluded.updated_by, updated_at=excluded.updated_at`
+    ).bind(rate, user.id, new Date().toISOString()).run();
+    return json({ ok: true, rate });
+  }
+
   if (url.pathname === "/api/admin/wallets" && request.method === "GET") {
     if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
     const rows = await env.DB.prepare(
       `SELECT w.id AS walletId, u.email, u.display_name AS displayName,
-              a.name AS assetName, w.balance_minor AS balanceMinor
+              a.name AS assetName, a.symbol, w.balance_minor AS balanceMinor
        FROM wallets w
        JOIN users u ON u.id = w.user_id
        JOIN assets a ON a.id = w.asset_id
@@ -262,6 +286,7 @@ const authApi = async (request, env, url) => {
 
     const userId = crypto.randomUUID();
     const walletId = crypto.randomUUID();
+    const usdWalletId = crypto.randomUUID();
     const passwordDigest = await passwordHash(password);
     const token = randomToken();
     const tokenHash = await sha256(token);
@@ -275,8 +300,23 @@ const authApi = async (request, env, url) => {
           "INSERT INTO users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)"
         ).bind(userId, email, passwordDigest, displayName),
         env.DB.prepare(
+          "INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('usd-dollar', 'USD', 'دولار أمريكي', 1)"
+        ),
+        env.DB.prepare(
           "INSERT INTO wallets (id, user_id, asset_id, balance_minor) SELECT ?, ?, id, 0 FROM assets WHERE symbol = 'SYP'"
         ).bind(walletId, userId),
+        env.DB.prepare(
+          "INSERT INTO wallets (id, user_id, asset_id, balance_minor) SELECT ?, ?, id, 0 FROM assets WHERE symbol = 'USD'"
+        ).bind(usdWalletId, userId),
+        env.DB.prepare(
+          `CREATE TABLE IF NOT EXISTS exchange_rates (
+            id TEXT PRIMARY KEY, base_symbol TEXT NOT NULL, quote_symbol TEXT NOT NULL,
+            rate REAL NOT NULL CHECK(rate > 0), updated_by TEXT REFERENCES users(id),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            UNIQUE(base_symbol, quote_symbol)
+          )`
+        ),
+        env.DB.prepare("INSERT OR IGNORE INTO exchange_rates (id, base_symbol, quote_symbol, rate) VALUES ('usd-syp','USD','SYP',0)"),
         env.DB.prepare(
           "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)"
         ).bind(crypto.randomUUID(), userId, tokenHash, expiresAt)
@@ -325,14 +365,31 @@ const authApi = async (request, env, url) => {
   if (url.pathname === "/api/auth/me" && request.method === "GET") {
     const user = await currentUser(request, env.DB);
     if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
-    const wallet = await env.DB.prepare(
-      `SELECT a.name AS asset_name, a.symbol, w.balance_minor
-       FROM wallets w JOIN assets a ON a.id = w.asset_id WHERE w.user_id = ? LIMIT 1`
-    ).bind(user.id).first();
+    await env.DB.batch([
+      env.DB.prepare("INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('syr-lira', 'SYP', 'ليرة', 1)"),
+      env.DB.prepare("INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('usd-dollar', 'USD', 'دولار أمريكي', 1)"),
+      env.DB.prepare("INSERT OR IGNORE INTO wallets (id, user_id, asset_id, balance_minor) SELECT lower(hex(randomblob(16))), ?, id, 0 FROM assets WHERE symbol IN ('SYP','USD')").bind(user.id),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS exchange_rates (
+        id TEXT PRIMARY KEY, base_symbol TEXT NOT NULL, quote_symbol TEXT NOT NULL,
+        rate REAL NOT NULL CHECK(rate > 0), updated_by TEXT REFERENCES users(id),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE(base_symbol, quote_symbol)
+      )`),
+      env.DB.prepare("INSERT OR IGNORE INTO exchange_rates (id, base_symbol, quote_symbol, rate) VALUES ('usd-syp','USD','SYP',0)")
+    ]);
+    const wallets = await env.DB.prepare(
+      `SELECT a.name AS assetName, a.symbol, w.id AS walletId, w.balance_minor AS balanceMinor
+       FROM wallets w JOIN assets a ON a.id = w.asset_id
+       WHERE w.user_id = ? AND a.symbol IN ('SYP','USD') ORDER BY CASE a.symbol WHEN 'SYP' THEN 1 ELSE 2 END`
+    ).bind(user.id).all();
+    const rates = await env.DB.prepare(
+      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
+    ).first();
     return json({
       ok: true,
       user: { id: user.id, email: user.email, displayName: user.display_name, role: user.role },
-      wallet: wallet ? { assetName: wallet.asset_name, symbol: wallet.symbol, balanceMinor: wallet.balance_minor } : null
+      wallets: wallets.results || [],
+      exchangeRate: rates || null
     });
   }
 
