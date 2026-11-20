@@ -188,6 +188,18 @@ const walletApi = async (request, env, url) => {
 
   if (url.pathname === "/api/admin/wallets" && request.method === "GET") {
     if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+    await env.DB.batch([
+      env.DB.prepare("INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('syr-lira','SYP','ليرة',1)"),
+      env.DB.prepare("INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('usd-dollar','USD','دولار أمريكي',1)"),
+      env.DB.prepare("INSERT OR IGNORE INTO wallets (id,user_id,asset_id,balance_minor) SELECT lower(hex(randomblob(16))),u.id,a.id,0 FROM users u CROSS JOIN assets a WHERE a.symbol IN ('SYP','USD') AND NOT EXISTS (SELECT 1 FROM wallets w WHERE w.user_id=u.id AND w.asset_id=a.id)"),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS exchange_rates (
+        id TEXT PRIMARY KEY, base_symbol TEXT NOT NULL, quote_symbol TEXT NOT NULL,
+        rate REAL NOT NULL CHECK(rate > 0), updated_by TEXT REFERENCES users(id),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE(base_symbol, quote_symbol)
+      )`),
+      env.DB.prepare("INSERT OR IGNORE INTO exchange_rates (id,base_symbol,quote_symbol,rate) VALUES ('usd-syp','USD','SYP',0)")
+    ]);
     const rows = await env.DB.prepare(
       `SELECT w.id AS walletId, u.email, u.display_name AS displayName,
               a.name AS assetName, a.symbol, w.balance_minor AS balanceMinor
@@ -202,9 +214,10 @@ const walletApi = async (request, env, url) => {
   if (url.pathname === "/api/wallet/ledger" && request.method === "GET") {
     const rows = await env.DB.prepare(
       `SELECT le.id, le.entry_type AS type, le.amount_minor AS amountMinor,
-              le.reference, le.note, le.created_at AS createdAt
+              le.reference, le.note, le.created_at AS createdAt, a.symbol
        FROM ledger_entries le
        JOIN wallets w ON w.id = le.wallet_id
+       JOIN assets a ON a.id = w.asset_id
        WHERE w.user_id = ?
        ORDER BY le.created_at DESC, le.id DESC LIMIT 100`
     ).bind(user.id).all();
