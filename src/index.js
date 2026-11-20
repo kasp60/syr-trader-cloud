@@ -244,8 +244,12 @@ const ensureFinanceSchema = async (db) => {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_internal_transfers_recipient_created ON internal_transfers(recipient_id,created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS platform_reserve_balances (asset_symbol TEXT PRIMARY KEY CHECK(asset_symbol IN ('SYP','USD')), balance_minor INTEGER NOT NULL DEFAULT 0 CHECK(balance_minor>=0), reserved_minor INTEGER NOT NULL DEFAULT 0 CHECK(reserved_minor>=0 AND reserved_minor<=balance_minor), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"),
     db.prepare("CREATE TABLE IF NOT EXISTS platform_reserve_movements (id TEXT PRIMARY KEY, asset_symbol TEXT NOT NULL CHECK(asset_symbol IN ('SYP','USD')), amount_minor INTEGER NOT NULL CHECK(amount_minor>0), external_reference TEXT NOT NULL, note TEXT NOT NULL, created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), UNIQUE(asset_symbol,external_reference))"),
-    db.prepare("INSERT OR IGNORE INTO platform_reserve_balances(asset_symbol,balance_minor,reserved_minor) VALUES('SYP',0,0),('USD',0,0)")
+    db.prepare("INSERT OR IGNORE INTO platform_reserve_balances(asset_symbol,balance_minor,reserved_minor) VALUES('SYP',0,0),('USD',0,0)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS platform_reserve_ledger (id TEXT PRIMARY KEY, asset_symbol TEXT NOT NULL CHECK(asset_symbol IN ('SYP','USD')), event_type TEXT NOT NULL CHECK(event_type IN ('funding','trade_payout','trade_gain','liquidation_gain')), amount_minor INTEGER NOT NULL, reference_id TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(event_type,reference_id))")
   ]);
+  const reserveColumns=await db.prepare("PRAGMA table_info(platform_reserve_balances)").all();
+  if(!(reserveColumns.results||[]).some(column=>column.name==="required_minor")) await db.prepare("ALTER TABLE platform_reserve_balances ADD COLUMN required_minor INTEGER NOT NULL DEFAULT 0").run();
+  if(!(reserveColumns.results||[]).some(column=>column.name==="deficit_minor")) await db.prepare("ALTER TABLE platform_reserve_balances ADD COLUMN deficit_minor INTEGER NOT NULL DEFAULT 0").run();
   const depositColumns=await db.prepare("PRAGMA table_info(deposit_requests)").all();
   if(!(depositColumns.results||[]).some(column=>column.name==="asset_symbol")){
     await db.prepare("ALTER TABLE deposit_requests ADD COLUMN asset_symbol TEXT NOT NULL DEFAULT 'SYP'").run();
