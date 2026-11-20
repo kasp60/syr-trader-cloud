@@ -416,8 +416,8 @@ const syncPlatformReserve = async (db, bounds=null) => {
 const reserveSettlementStatements = (db, asset, tradeId, lockMinor, customerPnl, eventType, now) => {
   const pnl=BigInt(customerPnl),payout=pnl>0n?pnl:0n,gain=pnl<0n?-pnl:0n,release=BigInt(lockMinor);
   return [
-    db.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+? WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND status='open')")
-      .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(payout),Number(payout),Number(release),Number(release),now,asset,tradeId),
+    db.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+MAX(0,?-deficit_minor) WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=CASE WHEN ?>0 THEN MAX(0,deficit_minor-?) ELSE deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND status='open')")
+      .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(gain),Number(gain),Number(payout),Number(payout),Number(release),Number(release),now,asset,tradeId),
     db.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND status='open')")
       .bind(crypto.randomUUID(),asset,eventType,Number(gain-payout),tradeId,eventType==="liquidation_gain"?"ربح المنصة من تصفية الصفقة":pnl>0n?"دفع ربح الصفقة":"ربح المنصة من خسارة الصفقة",now,tradeId)
   ];
@@ -677,7 +677,7 @@ const walletApi = async (request, env, url) => {
     const lock=tradeReserveLock(direction,quantityBig,entry,await getReserveReferenceBounds(env.DB));
     if(lock<0n||lock>9007199254740991n)return json({ok:false,error:"تعذر حساب تغطية الصفقة"},409);
     await syncPlatformReserve(env.DB);
-    const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
+    const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
     const balance=BigInt(reserve?.balanceMinor||0),required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0);
     if(required+lock>balance||reserved!==(required<balance?required:balance)||BigInt(reserve?.deficitMinor||0)>0n)
       return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±0.5%. يلزم تمويل الاحتياطي أولاً."},409);
@@ -776,7 +776,7 @@ const walletApi = async (request, env, url) => {
     const results=await env.DB.batch([
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND balance_minor<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,wallet.id,releaseCents,tradeId,user.id),
       env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+? WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND changes()=1 AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')")
-        .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(payout),Number(payout),Number(release),Number(release),now,trade.marginAssetSymbol,tradeId,user.id),
+        .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(gain),Number(gain),Number(payout),Number(payout),Number(release),Number(release),now,trade.marginAssetSymbol,tradeId,user.id),
       env.DB.prepare("UPDATE paper_trades SET status='closed',closed_at=?,exit_price_micro=?,pnl_cents=? WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,Number(exitPrice),pnlCents,tradeId,user.id),
       env.DB.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1")
         .bind(crypto.randomUUID(),trade.marginAssetSymbol,pnlCents>0?"trade_payout":"trade_gain",Number(gain-payout),tradeId,pnlCents>0?"دفع ربح الصفقة":"تسجيل نتيجة الصفقة لصالح الاحتياطي",now),
