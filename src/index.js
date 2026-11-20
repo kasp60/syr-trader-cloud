@@ -631,8 +631,8 @@ const walletApi = async (request, env, url) => {
     const targetMinor=direction==="USD_TO_SYP"?Math.round(sourceMinor*rate/100):Math.round(sourceMinor/rate*100);
     if(!Number.isSafeInteger(targetMinor)||targetMinor<=0||targetMinor>9007199254740991)return json({ok:false,error:"الناتج خارج النطاق المقبول"},400);
     const [source,target]=await Promise.all([
-      env.DB.prepare("SELECT id,balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,sourceSymbol).first(),
-      env.DB.prepare("SELECT id,balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,targetSymbol).first()
+      env.DB.prepare("SELECT w.id AS id,w.balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,sourceSymbol).first(),
+      env.DB.prepare("SELECT w.id AS id,w.balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,targetSymbol).first()
     ]);
     if(!source||!target)return json({ok:false,error:"إحدى المحافظ غير موجودة"},409);
     if(Number(target.balanceMinor)>9007199254740991-targetMinor)return json({ok:false,error:"رصيد المحفظة المستقبلة تجاوز الحد المسموح"},409);
