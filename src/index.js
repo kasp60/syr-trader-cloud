@@ -453,15 +453,24 @@ const processPendingLimitOrders = async (db) => {
 };
 
 const settleLiquidatedTrades = async (db) => {
-  const rows=await db.prepare(`SELECT t.id,t.user_id AS userId,t.direction,t.liquidation_price_micro AS liquidationPriceMicro,
-    p.price_micro AS currentPriceMicro FROM paper_trades t JOIN market_prices p ON p.instrument_id=t.instrument_id WHERE t.status='open'`).all();
+  await syncPlatformReserve(db);
+  const bounds=await getReserveReferenceBounds(db);
+  const rows=await db.prepare("SELECT t.id,t.user_id AS userId,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,t.margin_cents AS marginMinor,t.margin_asset_symbol AS assetSymbol,t.liquidation_price_micro AS liquidationPriceMicro,p.price_micro AS currentPriceMicro FROM paper_trades t JOIN market_prices p ON p.instrument_id=t.instrument_id WHERE t.status='open'").all();
   let liquidated=0;
   for(const t of (rows.results||[])){
-    const executablePrice=Number(marketQuote(t.currentPriceMicro,t.direction==="long"?"bid":"ask")),triggered=t.direction==="long"?executablePrice<=Number(t.liquidationPriceMicro):executablePrice>=Number(t.liquidationPriceMicro);
+    const executablePrice=Number(marketQuote(t.currentPriceMicro,t.direction==="long"?"bid":"ask"));
+    const triggered=t.direction==="long"?executablePrice<=Number(t.liquidationPriceMicro):executablePrice>=Number(t.liquidationPriceMicro);
     if(!triggered)continue;
-    const result=await db.prepare("UPDATE paper_trades SET status='liquidated',closed_at=?,exit_price_micro=?,pnl_cents=-margin_cents WHERE id=? AND user_id=? AND status='open'").bind(new Date().toISOString(),executablePrice,t.id,t.userId).run();
-    if(Number(result.meta?.changes||0)>0)liquidated++;
+    const lock=tradeReserveLock(t.direction,t.quantityMicro,t.entryPriceMicro,bounds),now=new Date().toISOString(),margin=BigInt(t.marginMinor);
+    const settlement=reserveSettlementStatements(db,t.assetSymbol, t.id, lock, -margin, "liquidation_gain", now)[0];
+    const result=await db.batch([
+      settlement,
+      db.prepare("UPDATE paper_trades SET status='liquidated',closed_at=?,exit_price_micro=?,pnl_cents=-margin_cents WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,executablePrice,t.id,t.userId),
+      db.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,'liquidation_gain',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),t.assetSymbol,Number(margin),t.id,"الهامش المحتجز من تصفية الصفقة",now)
+    ]);
+    if(Number(result?.[1]?.meta?.changes||0)>0)liquidated++;
   }
+  await syncPlatformReserve(db,bounds);
   return liquidated;
 };
 
