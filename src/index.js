@@ -425,22 +425,25 @@ const walletApi = async (request, env, url) => {
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const instrumentId=String(body.instrumentId||""),direction=String(body.direction||"");
     const quantity=Number(body.quantity),quantityMicro=Math.round(quantity*1000000);
+    const leverage=Number(body.leverage);
     if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||
-      !Number.isFinite(quantity)||quantity<=0||quantity>1000000||!Number.isSafeInteger(quantityMicro)||quantityMicro<=0)
-      return json({ok:false,error:"تحقق من الاتجاه والكمية"},400);
+      !Number.isFinite(quantity)||quantity<=0||quantity>1000000||!Number.isSafeInteger(quantityMicro)||quantityMicro<=0||
+      !Number.isInteger(leverage)||leverage<1||leverage>20)
+      return json({ok:false,error:"تحقق من الاتجاه والكمية والرافعة (من 1x إلى 20x)"},400);
     const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
     const notional=BigInt(instrument.priceMicro)*BigInt(quantityMicro);
-    const marginBig=(notional+199999999999n)/200000000000n;
+    const marginDenominator=10000000000n*BigInt(leverage);
+    const marginBig=(notional+marginDenominator-1n)/marginDenominator;
     if(marginBig<=0n||marginBig>9007199254740991n)return json({ok:false,error:"الهامش خارج النطاق"},400);
     const marginCents=Number(marginBig),now=new Date().toISOString(),tradeId=crypto.randomUUID();
     const results=await env.DB.batch([
       env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?").bind(marginCents,now,user.id,marginCents),
-      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at) SELECT ?,?,?,?,?,?,20,?,'open',? WHERE changes()=1")
-        .bind(tradeId,user.id,instrumentId,direction,quantityMicro,instrument.priceMicro,marginCents,now)
+      env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,status,opened_at) SELECT ?,?,?,?,?,?,?,?,'open',? WHERE changes()=1")
+        .bind(tradeId,user.id,instrumentId,direction,quantityMicro,instrument.priceMicro,leverage,marginCents,now)
     ]);
     if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد التداول التجريبي لا يكفي للهامش"},409);
-    return json({ok:true,tradeId,direction,quantity,leverage:20,marginCents,entryPriceMicro:instrument.priceMicro});
+    return json({ok:true,tradeId,direction,quantity,leverage,marginCents,entryPriceMicro:instrument.priceMicro});
   }
 
   if (url.pathname === "/api/paper/trade-close" && request.method === "POST") {
