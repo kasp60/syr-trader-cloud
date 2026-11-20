@@ -395,8 +395,10 @@
           <h3 style="margin-top:22px">سعر صرف الدولار مقابل الليرة</h3>
           <label for="exchangeRateInput">كم ليرة تساوي دولاراً واحداً؟</label>
           <input id="exchangeRateInput" type="number" min="0.000001" step="0.01" placeholder="أدخل السعر المعتمد">
-          <div class="form-actions"><button type="button" id="saveRateButton">حفظ سعر الصرف</button></div>
-          <div class="message" id="rateMessage" role="status" aria-live="polite"></div><p class="muted">عند حفظ سعر الصرف يبدأ بوت حركة السوق تلقائياً، ويعمل على الخادم حتى عند إغلاق التطبيق.</p>
+          <label for="rateTransitionMinutes">مدة الوصول التدريجي (بالدقائق)</label>
+          <input id="rateTransitionMinutes" type="number" min="1" max="1440" step="1" value="15" required>
+          <div class="form-actions"><button type="button" id="saveRateButton">اعتماد السعر تدريجياً</button></div>
+          <div class="message" id="rateMessage" role="status" aria-live="polite"></div><p class="muted">يتحرك سعر السوق والشارت تدريجياً نحو السعر المعتمد خلال المدة المحددة، ويستمر المحرك بالعمل على الخادم.</p>
           <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
         </section>
         </section>
@@ -1036,10 +1038,9 @@
     try {
       const data = await api("/api/admin/exchange-rate", {
         method: "POST",
-        body: JSON.stringify({ rate: Number($("exchangeRateInput").value) })
+        body: JSON.stringify({ rate: Number($("exchangeRateInput").value), transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
       });
-      $("exchangeRateView").textContent = "سعر الإدارة: 1 دولار = " + Number(data.rate).toLocaleString("en-US") + " ليرة";
-      message($("rateMessage"), "تم حفظ سعر الصرف وتشغيل بوت حركة السوق.", "success");
+      message($("rateMessage"), "تم اعتماد السعر الجديد، وسيصل إليه السوق تدريجياً خلال " + data.transitionMinutes + " دقيقة.", "success");
       await loadPaperMarket();
       await loadTradingChart();
     } catch (error) { message($("rateMessage"), error.message, "error"); }
