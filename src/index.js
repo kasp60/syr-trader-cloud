@@ -429,7 +429,7 @@ const reserveSettlementStatements = (db, asset, tradeId, lockMinor, customerPnl,
 };
 
 const processPendingLimitOrders = async (db) => {
-  await syncPlatformReserve(db);
+  try { await syncPlatformReserve(db); } catch (error) { console.error("SYR_TRADER_RESERVE_LIMIT_SYNC",String(error)); return 0; }
   const pending = await db.prepare("SELECT o.id,o.user_id AS userId,o.instrument_id AS instrumentId,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,p.price_micro AS currentPriceMicro FROM paper_limit_orders o JOIN market_prices p ON p.instrument_id=o.instrument_id WHERE o.status='pending'").all();
   let filled = 0;
   for (const order of (pending.results || [])) {
@@ -459,8 +459,9 @@ const processPendingLimitOrders = async (db) => {
 };
 
 const settleLiquidatedTrades = async (db) => {
-  await syncPlatformReserve(db);
-  const bounds=await getReserveReferenceBounds(db);
+  let bounds=null;
+  try { await syncPlatformReserve(db); bounds=await getReserveReferenceBounds(db); }
+  catch (error) { console.error("SYR_TRADER_RESERVE_LIQUIDATION_SYNC",String(error)); bounds=await getReserveReferenceBounds(db); }
   const rows=await db.prepare("SELECT t.id,t.user_id AS userId,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,t.margin_cents AS marginMinor,t.margin_asset_symbol AS assetSymbol,t.liquidation_price_micro AS liquidationPriceMicro,p.price_micro AS currentPriceMicro FROM paper_trades t JOIN market_prices p ON p.instrument_id=t.instrument_id WHERE t.status='open'").all();
   let liquidated=0;
   for(const t of (rows.results||[])){
@@ -775,8 +776,16 @@ const walletApi = async (request, env, url) => {
     if(!trade)return json({ok:false,error:"الصفقة مغلقة أو تمت تصفيتها أو غير موجودة"},404);
     const price=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first();
     if(!price)return json({ok:false,error:"السعر الحالي غير متاح"},409);
-    await syncPlatformReserve(env.DB);
-    const bounds=await getReserveReferenceBounds(env.DB),lock=tradeReserveLock(trade.direction,trade.quantityMicro,trade.entryPriceMicro,bounds);
+    let bounds=null,lock=0n;
+    try {
+      bounds=await getReserveReferenceBounds(env.DB);
+      lock=tradeReserveLock(trade.direction,trade.quantityMicro,trade.entryPriceMicro,bounds);
+    } catch (error) {
+      console.error("SYR_TRADER_RESERVE_CLOSE_SYNC",String(error));
+    }
+    const reserveState=await env.DB.prepare("SELECT reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(trade.marginAssetSymbol).first();
+    const maxRelease=BigInt(Math.max(0,Number(reserveState?.reservedMinor||0)));
+    const release=lock<maxRelease?lock:maxRelease;
     const exitPrice=marketQuote(price.priceMicro,trade.direction==="long"?"bid":"ask"),delta=exitPrice-BigInt(trade.entryPriceMicro);
     const rawPnl=trade.direction==="long"?delta*BigInt(trade.quantityMicro)/1000000000000n:BigInt(trade.quantityMicro)*(-delta)*100n/(BigInt(trade.entryPriceMicro)*1000000n);
     const margin=BigInt(trade.marginCents),pnl=rawPnl < -margin ? -margin : rawPnl;
@@ -784,7 +793,7 @@ const walletApi = async (request, env, url) => {
     const pnlCents=Number(safePnl),releaseCents=Number(margin+safePnl),now=new Date().toISOString();
     const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,trade.marginAssetSymbol).first();
     if(!wallet)return json({ok:false,error:"محفظة الصفقة غير موجودة"},409);
-    const reservePnl=BigInt(pnlCents),payout=reservePnl>0n?reservePnl:0n,gain=reservePnl<0n?-reservePnl:0n,release=BigInt(lock);
+    const reservePnl=BigInt(pnlCents),payout=reservePnl>0n?reservePnl:0n,gain=reservePnl<0n?-reservePnl:0n;
     const results=await env.DB.batch([
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND balance_minor<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,wallet.id,releaseCents,tradeId,user.id),
       env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+MAX(0,?-deficit_minor) WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=CASE WHEN ?>0 THEN MAX(0,deficit_minor-?) ELSE deficit_minor+MAX(0,?-balance_minor) END,reserved_minor=MIN(CASE WHEN ?>0 THEN balance_minor+MAX(0,?-deficit_minor) WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,MAX(0,reserved_minor-MIN(reserved_minor,?))),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND changes()=1 AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')")
@@ -797,7 +806,7 @@ const walletApi = async (request, env, url) => {
     ]);
     if(!results?.[2]?.meta?.changes)return json({ok:false,error:"تعذر إغلاق الصفقة؛ حدّث الصفحة وحاول مجدداً"},409);
     await syncPlatformReserve(env.DB,bounds);
-    return json({ok:true,tradeId,pnlCents,releaseCents,marginAssetSymbol:trade.marginAssetSymbol,exitPriceMicro:Number(exitPrice),reserveLockedReleased:Number(lock)});
+    return json({ok:true,tradeId,pnlCents,releaseCents,marginAssetSymbol:trade.marginAssetSymbol,exitPriceMicro:Number(exitPrice),reserveLockedReleased:Number(release)});
   }
 
   if (url.pathname === "/api/paper/order" && request.method === "POST") {
