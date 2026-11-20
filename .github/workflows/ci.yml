@@ -23,4 +23,4 @@ jobs:
         run: node --check src/index.js
       - name: Check browser script syntax
         run: >-
-          node -e 'const fs = require("node:fs"); const vm = require("node:vm"); const html = fs.readFileSync("public/index.html", "utf8"); const scripts = [...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)].map(match => match[1]).filter(code => code.trim()); if (!scripts.length) throw new Error("No inline scripts found"); for (const code of scripts) new vm.Script(code);'
+          node -e 'const fs = require("node:fs"); const vm = require("node:vm"); const html = fs.readFileSync("public/index.html", "utf8"); const start = html.indexOf("<script>"); const end = html.indexOf("</script>", start); if (start < 0 || end < 0) throw new Error("Inline script not found"); new vm.Script(html.slice(start + 8, end));'
