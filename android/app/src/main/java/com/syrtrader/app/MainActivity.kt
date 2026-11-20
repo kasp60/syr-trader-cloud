@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.graphics.Color
 import android.graphics.Canvas
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -18,6 +19,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONObject
@@ -748,22 +750,93 @@ class MainActivity : Activity() {
                     financeTitle.gravity = Gravity.RIGHT
                     financeTitle.setPadding(0, dp(18), 0, dp(8))
                     content.addView(financeTitle, match())
-                    fun addRequests(rows: org.json.JSONArray?, label: String) {
+                    fun addRequests(rows: org.json.JSONArray?, label: String, endpoint: String, deposits: Boolean) {
                         if (rows == null) return
                         for (i in 0 until minOf(rows.length(), 15)) {
                             val item = rows.optJSONObject(i) ?: continue
                             val amount = item.optLong("amount") / 100.0
-                            val line = text("$label • ${item.optString("displayName")} • ${String.format("%.2f", amount)} • ${item.optString("status")}", 12, Color.WHITE)
+                            val currency = if (deposits) item.optString("assetSymbol", "USD") else "ليرة"
+                            val line = text("$label • ${item.optString("displayName")} • ${String.format("%.2f", amount)} $currency • ${item.optString("status")}", 12, Color.WHITE)
                             line.gravity = Gravity.RIGHT
                             line.setPadding(0, dp(7), 0, dp(4))
                             content.addView(line, match())
+                            if (item.optString("status") == "pending") {
+                                if (deposits) {
+                                    val proof = actionButton("عرض إثبات الإيداع")
+                                    content.addView(proof, fieldParams())
+                                    proof.setOnClickListener { showDepositProof(cookie, item.optString("id")) }
+                                }
+                                val controls = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+                                val approve = actionButton("اعتماد")
+                                val reject = actionButton("رفض")
+                                controls.addView(approve, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(5) })
+                                controls.addView(reject, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(5) })
+                                content.addView(controls, match())
+                                approve.setOnClickListener { confirmFinanceReview(cookie, endpoint, item.optString("id"), "approve") }
+                                reject.setOnClickListener { confirmFinanceReview(cookie, endpoint, item.optString("id"), "reject") }
+                            }
                         }
                     }
-                    addRequests(depositRows, "إيداع")
-                    addRequests(withdrawalRows, "سحب")
+                    addRequests(depositRows, "إيداع", "/api/admin/deposit-review", true)
+                    addRequests(withdrawalRows, "سحب", "/api/admin/withdrawal-review", false)
                 }
             } catch (e: Exception) {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
+            }
+        }
+    }
+
+    private fun confirmFinanceReview(cookie: String, endpoint: String, requestId: String, decision: String) {
+        val action = if (decision == "approve") "اعتماد" else "رفض"
+        android.app.AlertDialog.Builder(this)
+            .setTitle("تأكيد $action الطلب")
+            .setMessage("هل تريد $action هذا الطلب؟")
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("تأكيد") { _, _ ->
+                executor.execute {
+                    try {
+                        request("POST", endpoint,
+                            JSONObject().put("requestId", requestId).put("decision", decision).toString(), cookie)
+                        runOnUiThread { loadAdmin(cookie) }
+                    } catch (e: Exception) {
+                        runOnUiThread { android.widget.Toast.makeText(this, e.message ?: "تعذرت مراجعة الطلب", android.widget.Toast.LENGTH_LONG).show() }
+                    }
+                }
+            }.show()
+    }
+
+    private fun showDepositProof(cookie: String, requestId: String) {
+        executor.execute {
+            try {
+                val encodedId = java.net.URLEncoder.encode(requestId, "UTF-8")
+                val connection = (URL("$baseUrl/api/admin/deposit-proof?id=$encodedId").openConnection() as HttpURLConnection)
+                val bitmap = try {
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 15000
+                    connection.setRequestProperty("Cookie", cookie)
+                    val code = connection.responseCode
+                    if (code !in 200..299) throw Exception("تعذر تحميل إثبات الإيداع")
+                    val bytes = connection.inputStream.use { it.readBytes() }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw Exception("ملف الإثبات غير صالح")
+                } finally {
+                    connection.disconnect()
+                }
+                runOnUiThread {
+                    val image = ImageView(this).apply {
+                        setImageBitmap(bitmap)
+                        adjustViewBounds = true
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                    }
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("إثبات الإيداع")
+                        .setView(image)
+                        .setPositiveButton("إغلاق", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { android.widget.Toast.makeText(this, e.message ?: "تعذر عرض الإثبات", android.widget.Toast.LENGTH_LONG).show() }
             }
         }
     }
