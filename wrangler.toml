@@ -14,3 +14,6 @@ binding = "DB"
 database_name = "syr-trader-db"
 database_id = "ec45e583-df43-4ff4-9c94-07a7a56707c1"
 migrations_dir = "migrations"
+
+[triggers]
+crons = ["* * * * *"]
