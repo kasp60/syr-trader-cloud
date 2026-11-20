@@ -241,7 +241,10 @@ const ensureFinanceSchema = async (db) => {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status_created ON withdrawal_requests(status,created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS internal_transfers (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, amount_minor INTEGER NOT NULL CHECK(amount_minor>0), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), CHECK(sender_id<>recipient_id))"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_internal_transfers_sender_created ON internal_transfers(sender_id,created_at)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_internal_transfers_recipient_created ON internal_transfers(recipient_id,created_at)")
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_internal_transfers_recipient_created ON internal_transfers(recipient_id,created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS platform_reserve_balances (asset_symbol TEXT PRIMARY KEY CHECK(asset_symbol IN ('SYP','USD')), balance_minor INTEGER NOT NULL DEFAULT 0 CHECK(balance_minor>=0), reserved_minor INTEGER NOT NULL DEFAULT 0 CHECK(reserved_minor>=0 AND reserved_minor<=balance_minor), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS platform_reserve_movements (id TEXT PRIMARY KEY, asset_symbol TEXT NOT NULL CHECK(asset_symbol IN ('SYP','USD')), amount_minor INTEGER NOT NULL CHECK(amount_minor>0), external_reference TEXT NOT NULL, note TEXT NOT NULL, created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), UNIQUE(asset_symbol,external_reference))"),
+    db.prepare("INSERT OR IGNORE INTO platform_reserve_balances(asset_symbol,balance_minor,reserved_minor) VALUES('SYP',0,0),('USD',0,0)")
   ]);
   const depositColumns=await db.prepare("PRAGMA table_info(deposit_requests)").all();
   if(!(depositColumns.results||[]).some(column=>column.name==="asset_symbol")){
@@ -903,6 +906,40 @@ const walletApi = async (request, env, url) => {
     ]);
     return json({ok:true,deposits:deposits.results||[],withdrawals:withdrawals.results||[],transfers:transfers.results||[]});
   }
+
+  if (url.pathname === "/api/admin/platform-reserve" && request.method === "GET") {
+    if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
+    const [balances,movements]=await Promise.all([
+      env.DB.prepare("SELECT asset_symbol AS assetSymbol,balance_minor AS balanceMinor,reserved_minor AS reservedMinor,(balance_minor-reserved_minor) AS availableMinor FROM platform_reserve_balances ORDER BY asset_symbol").all(),
+      env.DB.prepare("SELECT m.id,m.asset_symbol AS assetSymbol,m.amount_minor AS amountMinor,m.external_reference AS externalReference,m.note,m.created_at AS createdAt,u.display_name AS createdBy FROM platform_reserve_movements m JOIN users u ON u.id=m.created_by ORDER BY m.created_at DESC LIMIT 50").all()
+    ]);
+    return json({ok:true,balances:balances.results||[],movements:movements.results||[]});
+  }
+  if (url.pathname === "/api/admin/platform-reserve/topup" && request.method === "POST") {
+    if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
+    if(!requireSameOrigin(request,url))return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const assetSymbol=String(body.assetSymbol||""),amountMinor=Number(body.amountMinor);
+    const externalReference=String(body.externalReference||"").trim(),note=String(body.note||"").trim();
+    if(!["SYP","USD"].includes(assetSymbol)||!Number.isSafeInteger(amountMinor)||amountMinor<=0||amountMinor>1000000000000000||externalReference.length<3||externalReference.length>120||note.length<3||note.length>240)
+      return json({ok:false,error:"أدخل العملة والمبلغ ومرجع التمويل والملاحظة بشكل صحيح"},400);
+    const id=crypto.randomUUID(),now=new Date().toISOString();
+    let result;
+    try {
+      result=await env.DB.batch([
+        env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=balance_minor+?,updated_at=? WHERE asset_symbol=? AND balance_minor<=9007199254740991-?").bind(amountMinor,now,assetSymbol,amountMinor),
+        env.DB.prepare("INSERT INTO platform_reserve_movements(id,asset_symbol,amount_minor,external_reference,note,created_by,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1").bind(id,assetSymbol,amountMinor,externalReference,note,user.id,now)
+      ]);
+    } catch {
+      const duplicate=await env.DB.prepare("SELECT id FROM platform_reserve_movements WHERE asset_symbol=? AND external_reference=?").bind(assetSymbol,externalReference).first();
+      if(duplicate)return json({ok:false,error:"مرجع التمويل مسجل مسبقاً لهذه العملة"},409);
+      throw new Error("تعذر تسجيل تمويل الاحتياطي");
+    }
+    if(!result?.[0]?.meta?.changes||!result?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إضافة المبلغ؛ تحقق من الرصيد أو المرجع"},409);
+    const balance=await env.DB.prepare("SELECT balance_minor AS balanceMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(assetSymbol).first();
+    return json({ok:true,assetSymbol,amountMinor,balance});
+  }
+
   if (url.pathname === "/api/admin/finance-requests" && request.method === "GET") {
     if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
     const [deposits,withdrawals]=await Promise.all([
