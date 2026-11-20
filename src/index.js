@@ -248,9 +248,17 @@ const walletApi = async (request, env, url) => {
     const isActive=body.isActive;
     if(!instrumentId||instrumentId.length>80||typeof isActive!=="boolean")
       return json({ok:false,error:"بيانات الأداة غير صحيحة"},400);
-    const result=await env.DB.prepare("UPDATE market_instruments SET is_active=? WHERE id=?")
-      .bind(isActive?1:0,instrumentId).run();
-    if(!result.meta?.changes)return json({ok:false,error:"الأداة غير موجودة"},404);
+    const result=await env.DB.prepare(`UPDATE market_instruments SET is_active=?
+      WHERE id=? AND (?=1 OR NOT EXISTS(
+        SELECT 1 FROM paper_positions p
+        WHERE p.instrument_id=market_instruments.id AND p.quantity_micro>0
+      ))`).bind(isActive?1:0,instrumentId,isActive?1:0).run();
+    if(!result.meta?.changes){
+      const instrument=await env.DB.prepare("SELECT id FROM market_instruments WHERE id=?").bind(instrumentId).first();
+      if(!instrument)return json({ok:false,error:"الأداة غير موجودة"},404);
+      if(!isActive)return json({ok:false,error:"لا يمكن إيقاف الأداة لأن هناك مستخدمين يملكون كميات مفتوحة منها؛ يجب إغلاق المراكز أولاً"},409);
+      return json({ok:false,error:"تعذر تحديث حالة الأداة"},409);
+    }
     return json({ok:true,instrumentId,isActive});
   }
 
