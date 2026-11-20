@@ -356,6 +356,15 @@
             <div class="performance-card"><span>إجمالي المستخدمين</span><strong id="adminUsersCount">—</strong></div>
             <div class="performance-card"><span>حالة محرك السوق</span><strong style="color:#0ecb81">يعمل دائماً</strong></div>
           </div>
+          <section class="subpanel" id="adminDailyMarketEvent" style="margin:14px 0">
+            <h3>الحركة اليومية للسوق</h3>
+            <div class="performance-grid">
+              <div class="performance-card"><span>الحالة</span><strong id="adminDailyEventStatus">—</strong></div>
+              <div class="performance-card"><span>موعد البداية المحلي</span><strong id="adminDailyEventTime">—</strong></div>
+              <div class="performance-card"><span>العدّ التنازلي</span><strong id="adminDailyEventCountdown">—</strong></div>
+            </div>
+            <p class="muted">الموعد حسب توقيت جهازك، ومدة الحركة المجدولة نحو 8 دقائق.</p>
+          </section>
           <h3 style="margin-top:22px">طلبات الإيداع والسحب</h3><p class="muted">تحقق من وصول حوالة Binance قبل قبول الإيداع. وفي طلب السحب، نفّذ التحويل خارج المنصة أولاً ثم اضغط قبول؛ الرفض يعيد المبلغ تلقائياً للعضو.</p><div id="adminFinanceRequests" class="muted">جارٍ تحميل الطلبات...</div>
           <h3>إدارة المستخدمين</h3>
           <p class="muted">يمكنك تفعيل الحسابات الموقوفة أو إيقاف حساب مستخدم. لا يمكن إيقاف حسابك الحالي أو آخر مدير نشط.</p>
@@ -921,6 +930,37 @@
     }catch(error){$("chartUpdated").textContent=error.message;}
   };
   document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet"){loadLedger();loadFinanceRequests();}if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();loadAdminFinanceRequests();loadPlatformReserve();}}));
+  const updateAdminDailyEvent=()=>{
+    if(!window.__syrIsAdmin)return;
+    const status=$("adminDailyEventStatus"),time=$("adminDailyEventTime"),countdown=$("adminDailyEventCountdown");
+    if(!status||!time||!countdown)return;
+    const now=new Date(),key=now.toISOString().slice(0,10);let hash=0;
+    for(const char of key)hash=(hash*31+char.charCodeAt(0))>>>0;
+    const minute=360+(hash%720);
+    let start=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate(),Math.floor(minute/60),minute%60));
+    let end=new Date(start.getTime()+8*60000);
+    const fmtDate=d=>d.toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit",hour12:true});
+    if(now>=end){
+      const tomorrow=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()+1));
+      const nextKey=tomorrow.toISOString().slice(0,10);let nextHash=0;
+      for(const char of nextKey)nextHash=(nextHash*31+char.charCodeAt(0))>>>0;
+      const nextMinute=360+(nextHash%720);
+      start=new Date(Date.UTC(tomorrow.getUTCFullYear(),tomorrow.getUTCMonth(),tomorrow.getUTCDate(),Math.floor(nextMinute/60),nextMinute%60));
+      end=new Date(start.getTime()+8*60000);
+      time.textContent=fmtDate(start)+" (غداً)";
+      status.textContent="انتهت حركة اليوم";
+    }else{
+      time.textContent=fmtDate(start);
+      status.textContent=now>=start?"بدأت الحركة":"قادمة اليوم";
+    }
+    const target=now>=start&&now<end?end:start;
+    const left=Math.max(0,target-now);
+    countdown.textContent=now>=start&&now<end
+      ?Math.floor(left/60000)+" د "+Math.floor(left%60000/1000)+" ث متبقية"
+      :Math.floor(left/3600000)+" س "+Math.floor(left%3600000/60000)+" د "+Math.floor(left%60000/1000)+" ث";
+  };
+  setInterval(updateAdminDailyEvent,1000);
+
   $("quickDeposit")?.addEventListener("click",()=>{document.querySelector('[data-app-page="wallet"]').click();$("depositAmount")?.focus();});
   $("quickWithdraw")?.addEventListener("click",()=>{document.querySelector('[data-app-page="wallet"]').click();$("withdrawAmount")?.focus();});
   $("quickTrade")?.addEventListener("click",()=>document.querySelector('[data-app-page="trading"]').click());
