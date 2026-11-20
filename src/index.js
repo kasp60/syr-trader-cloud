@@ -619,7 +619,10 @@ const walletApi = async (request, env, url) => {
     }
     const sourceSymbol=direction==="USD_TO_SYP"?"USD":"SYP";
     const targetSymbol=direction==="USD_TO_SYP"?"SYP":"USD";
-    const sourceMinor=Math.round(amount*(sourceSymbol==="USD"?100:1));
+    if((sourceSymbol==="SYP"&&!Number.isSafeInteger(amount))||(sourceSymbol==="USD"&&Math.round(amount*100)!==amount*100)){
+      return json({ok:false,error:"مبلغ الدولار يجب أن يحتوي منزلتين عشريتين كحد أقصى، والليرة أعداد صحيحة"},400);
+    }
+    const sourceMinor=sourceSymbol==="USD"?Math.round(amount*100):amount;
     if(!Number.isSafeInteger(sourceMinor)||sourceMinor<=0)return json({ok:false,error:"المبلغ خارج النطاق المقبول"},400);
     const rateRow=await env.DB.prepare("SELECT rate FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first();
     const rate=Number(rateRow?.rate||0);
@@ -628,14 +631,15 @@ const walletApi = async (request, env, url) => {
     if(!Number.isSafeInteger(targetMinor)||targetMinor<=0||targetMinor>9007199254740991)return json({ok:false,error:"الناتج خارج النطاق المقبول"},400);
     const [source,target]=await Promise.all([
       env.DB.prepare("SELECT id,balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,sourceSymbol).first(),
-      env.DB.prepare("SELECT id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,targetSymbol).first()
+      env.DB.prepare("SELECT id,balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,targetSymbol).first()
     ]);
     if(!source||!target)return json({ok:false,error:"إحدى المحافظ غير موجودة"},409);
+    if(Number(target.balanceMinor)>9007199254740991-targetMinor)return json({ok:false,error:"رصيد المحفظة المستقبلة تجاوز الحد المسموح"},409);
     const id=crypto.randomUUID(),now=new Date().toISOString();
     const sourceLabel=sourceSymbol==="USD"?"دولار":"ليرة",targetLabel=targetSymbol==="USD"?"دولار":"ليرة";
     const rateNote="تحويل عملة بسعر 1 دولار = "+rate+" ليرة";
     const batch=await env.DB.batch([
-      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(sourceMinor,now,source.id,sourceMinor),
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=? AND EXISTS(SELECT 1 FROM wallets WHERE id=? AND balance_minor<=9007199254740991-?)").bind(sourceMinor,now,source.id,sourceMinor,target.id,targetMinor),
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND changes()=1 AND balance_minor<=9007199254740991-?").bind(targetMinor,now,target.id,targetMinor),
       env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),source.id,sourceMinor,"exchange:"+id+":out",user.id,rateNote),
       env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),target.id,targetMinor,"exchange:"+id+":in",user.id,rateNote)
