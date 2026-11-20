@@ -519,6 +519,57 @@ const walletApi = async (request, env, url) => {
     return json({ok:true,tradeId,direction,marginAmount,quantity:Number(quantityMicro)/1000000,leverage,marginCents,marginAssetSymbol,entryPriceMicro:instrument.priceMicro,liquidationPriceMicro});
   }
 
+
+  if (url.pathname === "/api/paper/limit-order" && request.method === "POST") {
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const instrumentId=String(body.instrumentId||""),direction=String(body.direction||"");
+    const marginAmount=Number(body.margin),leverage=Number(body.leverage),limitPrice=Number(body.limitPrice);
+    if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||!Number.isFinite(marginAmount)||marginAmount<=0||marginAmount>1000000000000||!Number.isInteger(leverage)||leverage<1||leverage>20||!Number.isFinite(limitPrice)||limitPrice<=0||limitPrice>1000000000000)
+      return json({ok:false,error:"تحقق من مبلغ الهامش والرافعة والسعر المحدد"},400);
+    const validPrecision=direction==="long"?Number.isSafeInteger(marginAmount):Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
+    if(!validPrecision)return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
+    const instrument=await env.DB.prepare("SELECT i.id FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
+    if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
+    const limitPriceMicro=Math.round(limitPrice*1000000);
+    if(!Number.isSafeInteger(limitPriceMicro)||limitPriceMicro<=0)return json({ok:false,error:"السعر المحدد خارج النطاق"},400);
+    const marginAssetSymbol=direction==="long"?"SYP":"USD";
+    const marginMinor=Math.round(marginAmount*(direction==="long"?1:100));
+    if(!Number.isSafeInteger(marginMinor)||marginMinor<=0)return json({ok:false,error:"قيمة الهامش خارج النطاق"},400);
+    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,marginAssetSymbol).first();
+    if(!wallet)return json({ok:false,error:"محفظة العملة المطلوبة غير موجودة"},409);
+    const orderId=crypto.randomUUID(),now=new Date().toISOString();
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(marginMinor,now,wallet.id,marginMinor),
+      env.DB.prepare("INSERT INTO paper_limit_orders(id,user_id,instrument_id,direction,margin_minor,margin_asset_symbol,leverage,limit_price_micro,status,created_at) SELECT ?,?,?,?,?,?,?,?,'pending',? WHERE changes()=1").bind(orderId,user.id,instrumentId,direction,marginMinor,marginAssetSymbol,leverage,limitPriceMicro,now),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,marginMinor,"paper-limit:"+orderId+":reserve",user.id,"حجز هامش أمر "+(direction==="long"?"شراء":"بيع")+" محدد",orderId)
+    ]);
+    if(!Number(result?.[1]?.meta?.changes||0))return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
+    await processPendingLimitOrders(env.DB);
+    const saved=await env.DB.prepare("SELECT status,trade_id AS tradeId FROM paper_limit_orders WHERE id=? AND user_id=?").bind(orderId,user.id).first();
+    return json({ok:true,orderId,status:saved?.status||"pending",tradeId:saved?.tradeId||null,limitPriceMicro,marginMinor,marginAssetSymbol});
+  }
+
+  if (url.pathname === "/api/paper/limit-order-cancel" && request.method === "POST") {
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const orderId=String(body.orderId||"");
+    if(!orderId||orderId.length>80)return json({ok:false,error:"رقم الأمر غير صحيح"},400);
+    const order=await env.DB.prepare("SELECT margin_minor AS marginMinor,margin_asset_symbol AS marginAssetSymbol FROM paper_limit_orders WHERE id=? AND user_id=? AND status='pending'").bind(orderId,user.id).first();
+    if(!order)return json({ok:false,error:"الأمر لم يعد معلّقاً أو غير موجود"},409);
+    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,order.marginAssetSymbol).first();
+    if(!wallet)return json({ok:false,error:"محفظة الأمر غير موجودة"},409);
+    const now=new Date().toISOString(),amount=Number(order.marginMinor);
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE paper_limit_orders SET status='cancelled',cancelled_at=? WHERE id=? AND user_id=? AND status='pending'").bind(now,orderId,user.id),
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND changes()=1 AND balance_minor<=9007199254740991-?").bind(amount,now,wallet.id,amount),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,amount,"paper-limit:"+orderId+":refund",user.id,"إعادة هامش أمر معلّق ملغى",orderId)
+    ]);
+    if(!Number(result?.[0]?.meta?.changes||0))return json({ok:false,error:"تم تنفيذ الأمر أو إلغاؤه مسبقاً"},409);
+    if(!Number(result?.[1]?.meta?.changes||0))return json({ok:false,error:"تعذر إعادة الهامش تلقائياً؛ يرجى مراجعة المدير"},500);
+    return json({ok:true,orderId,refundedMinor:amount,marginAssetSymbol:order.marginAssetSymbol});
+  }
+
   if (url.pathname === "/api/paper/trade-close" && request.method === "POST") {
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
