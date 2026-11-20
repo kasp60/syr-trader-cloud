@@ -64,7 +64,7 @@
       </section>
       <section class="panel hidden" id="accountPanel">
         <h2>ملخص الحساب</h2>
-        <nav class="app-nav" aria-label="التنقل الرئيسي"><button type="button" data-app-page="dashboard" aria-current="page">الرئيسية</button><button type="button" data-app-page="trading">التداول</button><button type="button" data-app-page="wallet">المحفظة</button><button type="button" data-app-page="admin">الإدارة</button><button type="button" data-app-page="profile">حسابي</button></nav>
+        <nav class="app-nav" aria-label="التنقل الرئيسي"><button type="button" data-app-page="dashboard" aria-current="page">الرئيسية</button><button type="button" data-app-page="trading">التداول</button><button type="button" data-app-page="wallet">المحفظة</button><button type="button" data-app-page="admin" hidden>الإدارة</button><button type="button" data-app-page="profile">حسابي</button></nav>
         <section id="page-dashboard" class="app-page active">
         <div class="account-line"><span>الاسم</span><strong id="accountName">—</strong></div>
         <div class="account-line"><span>البريد</span><strong id="accountEmail">—</strong></div>
@@ -178,8 +178,6 @@
           <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
         </section>
         </section>
-        </section>
-        </section>
       </section>
     </section>
     <section class="grid" aria-label="أقسام المنصة">
@@ -210,6 +208,8 @@
   const showAccount = (data) => {
     window.__syrCurrentUserId = data.user.id;
     window.__syrIsAdmin = data.user.role === "admin";
+    const adminNav = document.querySelector('[data-app-page="admin"]');
+    if (adminNav) adminNav.hidden = !window.__syrIsAdmin;
     $("authPanel").classList.add("hidden");
     $("accountPanel").classList.remove("hidden");
     $("accountName").textContent = data.user.displayName;
@@ -436,6 +436,8 @@
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
     window.__syrIsAdmin = false;
+    const adminNav = document.querySelector('[data-app-page="admin"]');
+    if (adminNav) adminNav.hidden = true;
   };
   const api = async (path, options = {}) => {
     const response = await fetch(path, {
