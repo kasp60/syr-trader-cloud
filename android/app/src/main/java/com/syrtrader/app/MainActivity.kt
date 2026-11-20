@@ -403,8 +403,8 @@ class MainActivity : Activity() {
                     content.removeAllViews()
                     val open = board.optJSONArray("openTrades")
                     val closed = board.optJSONArray("closedTrades")
-                    addTradeSection(content, "الصفقات المفتوحة", open, true)
-                    addTradeSection(content, "الصفقات المغلقة", closed, false)
+                    addTradeSection(content, "الصفقات المفتوحة", open, true, cookie)
+                    addTradeSection(content, "الصفقات المغلقة", closed, false, cookie)
                 }
             } catch (e: Exception) {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
@@ -412,7 +412,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun addTradeSection(content: LinearLayout, titleText: String, rows: org.json.JSONArray?, isOpen: Boolean) {
+    private fun addTradeSection(content: LinearLayout, titleText: String, rows: org.json.JSONArray?, isOpen: Boolean, cookie: String) {
         val section = card()
         val title = text(titleText, 18, teal, true)
         title.gravity = Gravity.RIGHT
@@ -432,6 +432,31 @@ class MainActivity : Activity() {
             row.gravity = Gravity.RIGHT
             row.setPadding(0, dp(12), 0, dp(7))
             section.addView(row, match())
+            if (isOpen) {
+                val close = actionButton("إغلاق الصفقة")
+                section.addView(close, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                    topMargin = dp(6)
+                    bottomMargin = dp(8)
+                })
+                close.setOnClickListener {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("تأكيد إغلاق الصفقة")
+                        .setMessage("سيتم إغلاق الصفقة وتسوية نتيجتها حسب السعر الحالي. هل تريد المتابعة؟")
+                        .setNegativeButton("إلغاء", null)
+                        .setPositiveButton("إغلاق") { _, _ ->
+                            close.isEnabled = false
+                            executor.execute {
+                                try {
+                                    val payload = JSONObject().put("tradeId", t.optString("id"))
+                                    request("POST", "/api/paper/trade-close", payload.toString(), cookie)
+                                    runOnUiThread { close.text = "تم إغلاق الصفقة" }
+                                } catch (e: Exception) {
+                                    runOnUiThread { close.isEnabled = true; close.text = e.message ?: "تعذر إغلاق الصفقة" }
+                                }
+                            }
+                        }.show()
+                }
+            }
         }
         content.addView(section, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             bottomMargin = dp(12)
