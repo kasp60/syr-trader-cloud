@@ -66,7 +66,10 @@
           <article class="card"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
         </div>
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
-        <div class="form-actions"><button type="button" id="logoutButton">تسجيل الخروج</button></div>
+        <div class="form-actions">
+          <button type="button" id="logoutOthersButton">إنهاء الجلسات الأخرى</button>
+          <button type="button" id="logoutButton">تسجيل الخروج</button>
+        </div>
         <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
         <section id="paperMarketPanel" class="subpanel">
           <h3>التداول التجريبي</h3>
@@ -454,6 +457,16 @@
       message($("marketAdminMessage"),"تم حفظ السعر التجريبي.","success"); await loadPaperMarket();
     } catch(error) { message($("marketAdminMessage"),error.message,"error"); }
     finally { button.disabled=false; }
+  });
+  $("logoutOthersButton").addEventListener("click", async () => {
+    const button=$("logoutOthersButton");
+    button.disabled=true;
+    try {
+      const result=await api("/api/auth/logout-others",{method:"POST",body:"{}"});
+      message($("accountMessage"),"تم إنهاء "+Number(result.revoked||0)+" جلسة أخرى، وبقي هذا الجهاز متصلاً.","success");
+    } catch(error) {
+      message($("accountMessage"),error.message,"error");
+    } finally { button.disabled=false; }
   });
   $("logoutButton").addEventListener("click", async () => {
     try {
