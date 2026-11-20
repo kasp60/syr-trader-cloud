@@ -295,9 +295,9 @@
       });
       $("adjustAmount").value = "";
       $("adjustNote").value = "";
+      const refreshed = await api("/api/auth/me", { headers: {} });
+      showAccount(refreshed);
       message($("adminMessage"), "تم تسجيل الحركة وتحديث الرصيد.", "success");
-      loadAdminWallets();
-      loadLedger();
     } catch (error) { message($("adminMessage"), error.message, "error"); }
     finally { button.disabled = false; }
   });
