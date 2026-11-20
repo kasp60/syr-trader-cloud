@@ -1,6 +1,8 @@
 package com.syrtrader.app
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -36,6 +38,8 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
+    private var activeCookie: String? = null
+    private var pendingDepositAmount: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,6 +125,7 @@ class MainActivity : Activity() {
     }
 
     private fun showDashboard(profile: JSONObject, cookie: String) {
+        activeCookie = cookie
         val user = profile.optJSONObject("user") ?: JSONObject()
         val code = profile.optString("memberCode", "")
         root = baseLayout()
@@ -164,6 +169,9 @@ class MainActivity : Activity() {
                     }
                 }
                 addView(nav, match())
+                val telegram = actionButton("قناة تيليجرام الرسمية")
+                addView(telegram, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(10) })
+                telegram.setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/syriatrader2027"))) }
                 val content = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     setPadding(0, dp(14), 0, 0)
@@ -254,6 +262,17 @@ class MainActivity : Activity() {
                             walletCard.addView(row, match())
                         }
                     }
+                    val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+                    val deposit = actionButton("طلب إيداع بالدولار")
+                    actions.addView(deposit, fieldParams())
+                    deposit.setOnClickListener { showDepositAmountDialog() }
+                    val withdrawal = actionButton("طلب سحب بالليرة")
+                    actions.addView(withdrawal, fieldParams())
+                    withdrawal.setOnClickListener { showWithdrawalDialog(cookie) }
+                    val transfer = actionButton("تحويل ليرة إلى عضو")
+                    actions.addView(transfer, fieldParams())
+                    transfer.setOnClickListener { showTransferDialog(cookie) }
+                    content.addView(actions, match())
                     val requests = finance.optJSONArray("deposits")
                     val requestTitle = text("طلبات الإيداع", 17, teal, true)
                     requestTitle.gravity = Gravity.RIGHT
@@ -266,13 +285,180 @@ class MainActivity : Activity() {
                     } else for (i in 0 until minOf(requests.length(), 15)) {
                         val item = requests.optJSONObject(i) ?: continue
                         val amount = String.format("%.2f", item.optLong("amount") / 100.0)
-                        val row = text("$amount USD  •  ${item.optString("status")}", 13, Color.WHITE)
+                        val row = text("$amount ${item.optString("assetSymbol", "USD")}  •  ${item.optString("status")}", 13, Color.WHITE)
+                        row.gravity = Gravity.RIGHT
+                        content.addView(row, match())
+                    }
+                    val withdrawals = finance.optJSONArray("withdrawals")
+                    val withdrawalsTitle = text("طلبات السحب", 17, teal, true)
+                    withdrawalsTitle.gravity = Gravity.RIGHT
+                    withdrawalsTitle.setPadding(0, dp(16), 0, dp(8))
+                    content.addView(withdrawalsTitle, match())
+                    if (withdrawals != null) for (i in 0 until minOf(withdrawals.length(), 15)) {
+                        val item = withdrawals.optJSONObject(i) ?: continue
+                        val amount = String.format("%,d", item.optLong("amount") / 100)
+                        val row = text("$amount ليرة  •  ${item.optString("status")}", 13, Color.WHITE)
+                        row.gravity = Gravity.RIGHT
+                        content.addView(row, match())
+                    }
+                    val transfers = finance.optJSONArray("transfers")
+                    val transfersTitle = text("التحويلات الداخلية", 17, teal, true)
+                    transfersTitle.gravity = Gravity.RIGHT
+                    transfersTitle.setPadding(0, dp(16), 0, dp(8))
+                    content.addView(transfersTitle, match())
+                    if (transfers != null) for (i in 0 until minOf(transfers.length(), 15)) {
+                        val item = transfers.optJSONObject(i) ?: continue
+                        val amount = String.format("%,d", item.optLong("amount") / 100)
+                        val direction = if (item.optString("direction") == "out") "إلى" else "من"
+                        val row = text("$direction ${item.optString("otherName")} • $amount ليرة", 13, Color.WHITE)
                         row.gravity = Gravity.RIGHT
                         content.addView(row, match())
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
+            }
+        }
+    }
+
+    private fun showDepositAmountDialog() {
+        val amount = input("مبلغ الإيداع بالدولار", false)
+        amount.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        android.app.AlertDialog.Builder(this)
+            .setTitle("طلب إيداع")
+            .setMessage("أدخل المبلغ ثم اختر صورة إثبات التحويل. الحد الأقصى للصورة 850 كيلوبايت.")
+            .setView(amount)
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("اختيار صورة") { _, _ ->
+                val value = amount.text.toString().trim()
+                if (value.toDoubleOrNull() == null || value.toDoubleOrNull()!! <= 0) {
+                    android.widget.Toast.makeText(this, "أدخل مبلغاً صحيحاً", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    pendingDepositAmount = value
+                    val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "image/*"
+                    }
+                    startActivityForResult(picker, 701)
+                }
+            }.show()
+    }
+
+    private fun showWithdrawalDialog(cookie: String) {
+        val amount = input("المبلغ بالليرة (عدد صحيح)", false)
+        amount.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        val details = input("بيانات استلام الحوالة", false)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(amount, fieldParams())
+            addView(details, fieldParams())
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("طلب سحب")
+            .setView(box)
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("إرسال الطلب") { _, _ ->
+                val whole = amount.text.toString().trim().toLongOrNull()
+                val payout = details.text.toString().trim()
+                if (whole == null || whole <= 0 || whole > 10000000000L || payout.length < 5) {
+                    android.widget.Toast.makeText(this, "تحقق من المبلغ وبيانات الاستلام", android.widget.Toast.LENGTH_LONG).show()
+                } else sendWalletAction(cookie, "/api/wallet/withdrawal",
+                    JSONObject().put("amount", whole * 100L).put("payoutDetails", payout), "تم إرسال طلب السحب")
+            }.show()
+    }
+
+    private fun showTransferDialog(cookie: String) {
+        val code = input("رقم العضوية (10 أرقام)", false)
+        code.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        val amount = input("المبلغ بالليرة (عدد صحيح)", false)
+        amount.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(code, fieldParams())
+            addView(amount, fieldParams())
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("تحويل داخلي")
+            .setView(box)
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("تحويل") { _, _ ->
+                val member = code.text.toString().trim()
+                val whole = amount.text.toString().trim().toLongOrNull()
+                if (!member.matches(Regex("[0-9]{10}")) || whole == null || whole <= 0 || whole > 10000000000L) {
+                    android.widget.Toast.makeText(this, "تحقق من رقم العضوية والمبلغ", android.widget.Toast.LENGTH_LONG).show()
+                } else sendWalletAction(cookie, "/api/wallet/transfer",
+                    JSONObject().put("memberCode", member).put("amount", whole * 100L), "تم تنفيذ التحويل الداخلي")
+            }.show()
+    }
+
+    private fun sendWalletAction(cookie: String, path: String, payload: JSONObject, success: String) {
+        executor.execute {
+            try {
+                request("POST", path, payload.toString(), cookie)
+                runOnUiThread {
+                    android.widget.Toast.makeText(this, success, android.widget.Toast.LENGTH_LONG).show()
+                    loadWallet(cookie)
+                }
+            } catch (e: Exception) {
+                runOnUiThread { android.widget.Toast.makeText(this, e.message ?: "تعذر تنفيذ الطلب", android.widget.Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 701 || resultCode != Activity.RESULT_OK) return
+        val uri = data?.data ?: return
+        val amount = pendingDepositAmount ?: return
+        val cookie = activeCookie ?: return
+        pendingDepositAmount = null
+        executor.execute {
+            try {
+                val mime = contentResolver.getType(uri) ?: throw Exception("تعذر تحديد نوع الصورة")
+                if (mime !in listOf("image/jpeg", "image/png", "image/webp")) throw Exception("الصورة يجب أن تكون JPG أو PNG أو WEBP")
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw Exception("تعذر قراءة الصورة")
+                if (bytes.isEmpty() || bytes.size > 850000) throw Exception("حجم الصورة يجب ألا يتجاوز 850 كيلوبايت")
+                val boundary = "----SYRTRADER" + java.util.UUID.randomUUID().toString().replace("-", "")
+                val connection = (URL(baseUrl + "/api/wallet/deposit").openConnection() as HttpURLConnection)
+                try {
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 20000
+                    connection.readTimeout = 20000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Accept", "application/json")
+                    connection.setRequestProperty("Origin", origin)
+                    connection.setRequestProperty("Cookie", cookie)
+                    connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                    connection.outputStream.use { out ->
+                        fun field(name: String, value: String) {
+                            out.write("--$boundary\r\n".toByteArray())
+                            out.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray())
+                            out.write(value.toByteArray(Charsets.UTF_8))
+                            out.write("\r\n".toByteArray())
+                        }
+                        field("amount", amount)
+                        out.write("--$boundary\r\n".toByteArray())
+                        out.write("Content-Disposition: form-data; name=\"proof\"; filename=\"proof\"\r\n".toByteArray())
+                        out.write("Content-Type: $mime\r\n\r\n".toByteArray())
+                        out.write(bytes)
+                        out.write("\r\n--$boundary--\r\n".toByteArray())
+                    }
+                    val code = connection.responseCode
+                    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                    val response = JSONObject(stream?.bufferedReader()?.use { it.readText() } ?: "{}")
+                    if (code !in 200..299 || !response.optBoolean("ok", false)) throw Exception(response.optString("error").ifBlank { "تعذر إرسال طلب الإيداع" })
+                    runOnUiThread {
+                        android.widget.Toast.makeText(this, "تم إرسال طلب الإيداع للمراجعة", android.widget.Toast.LENGTH_LONG).show()
+                        loadWallet(cookie)
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { android.widget.Toast.makeText(this, e.message ?: "تعذر رفع إثبات الإيداع", android.widget.Toast.LENGTH_LONG).show() }
             }
         }
     }
@@ -449,7 +635,7 @@ class MainActivity : Activity() {
                                 try {
                                     val payload = JSONObject().put("tradeId", t.optString("id"))
                                     request("POST", "/api/paper/trade-close", payload.toString(), cookie)
-                                    runOnUiThread { close.text = "تم إغلاق الصفقة" }
+                                    runOnUiThread { loadPositions(cookie) }
                                 } catch (e: Exception) {
                                     runOnUiThread { close.isEnabled = true; close.text = e.message ?: "تعذر إغلاق الصفقة" }
                                 }
@@ -466,7 +652,7 @@ class MainActivity : Activity() {
     private fun dashboardContent(): LinearLayout? {
         val scroll = root.getChildAt(0) as? ScrollView ?: return null
         val page = scroll.getChildAt(0) as? LinearLayout ?: return null
-        return page.getChildAt(6) as? LinearLayout
+        return page.getChildAt(7) as? LinearLayout
     }
 
     private fun showError(content: LinearLayout, message: String?) {
