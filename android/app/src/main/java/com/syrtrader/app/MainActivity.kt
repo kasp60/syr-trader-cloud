@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.os.Bundle
 import android.security.keystore.KeyGenParameterSpec
@@ -488,7 +491,17 @@ class MainActivity : Activity() {
                         card.addView(line, match())
                     }
                     val points = chart.optJSONArray("points")
-                    val count = points?.length() ?: 0
+                    val chartValues = mutableListOf<Float>()
+                    if (points != null) for (i in 0 until points.length()) {
+                        val value = points.optJSONObject(i)?.optLong("priceMicro", 0L) ?: 0L
+                        if (value > 0L) chartValues.add(value / 1000000f)
+                    }
+                    val chartTitle = text("حركة السعر", 16, Color.WHITE, true)
+                    chartTitle.gravity = Gravity.RIGHT
+                    chartTitle.setPadding(0, dp(18), 0, dp(8))
+                    card.addView(chartTitle, match())
+                    card.addView(PriceChartView(chartValues), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190)))
+                    val count = chartValues.size
                     val chartInfo = text("عدد نقاط سجل السعر: $count", 12, muted)
                     chartInfo.gravity = Gravity.RIGHT
                     card.addView(chartInfo, match())
@@ -653,6 +666,64 @@ class MainActivity : Activity() {
         val scroll = root.getChildAt(0) as? ScrollView ?: return null
         val page = scroll.getChildAt(0) as? LinearLayout ?: return null
         return page.getChildAt(7) as? LinearLayout
+    }
+
+    private inner class PriceChartView(private val values: List<Float>) : View(this@MainActivity) {
+        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = teal
+            strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(47, 65, 88)
+            strokeWidth = dp(1).toFloat()
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(22, 65, 72)
+            style = Paint.Style.FILL
+            alpha = 110
+        }
+        private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = muted
+            textSize = dp(10).toFloat()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val left = dp(8).toFloat()
+            val right = width - dp(8).toFloat()
+            val top = dp(12).toFloat()
+            val bottom = height - dp(18).toFloat()
+            canvas.drawColor(panel)
+            for (i in 0..3) {
+                val y = top + (bottom - top) * i / 3f
+                canvas.drawLine(left, y, right, y, gridPaint)
+            }
+            if (values.size < 2) {
+                canvas.drawText("لا تتوفر بيانات كافية للرسم بعد", left, height / 2f, labelPaint)
+                return
+            }
+            val minValue = values.minOrNull() ?: return
+            val maxValue = values.maxOrNull() ?: return
+            val range = (maxValue - minValue).takeIf { it > 0f } ?: 1f
+            val path = Path()
+            values.forEachIndexed { index, value ->
+                val x = left + (right - left) * index / (values.size - 1).toFloat()
+                val y = bottom - ((value - minValue) / range) * (bottom - top)
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            val fill = Path(path).apply {
+                lineTo(right, bottom)
+                lineTo(left, bottom)
+                close()
+            }
+            canvas.drawPath(fill, fillPaint)
+            canvas.drawPath(path, linePaint)
+            canvas.drawText(String.format("%.2f", maxValue), left, top - dp(2), labelPaint)
+            canvas.drawText(String.format("%.2f", minValue), left, height - dp(2).toFloat(), labelPaint)
+        }
     }
 
     private fun showError(content: LinearLayout, message: String?) {
