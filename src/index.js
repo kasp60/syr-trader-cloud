@@ -491,6 +491,7 @@ const authApi = async (request, env, url) => {
   if (!env.DB) return json({ ok: false, error: "Database is not configured" }, 503);
 
   if (url.pathname === "/api/auth/register" && request.method === "POST") {
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
     let body;
     try { body = await readJson(request); } catch { return json({ ok: false, error: "Invalid request body" }, 400); }
     const email = String(body.email || "").trim().toLowerCase();
@@ -555,6 +556,7 @@ const authApi = async (request, env, url) => {
   }
 
   if (url.pathname === "/api/auth/login" && request.method === "POST") {
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
     let body;
     try { body = await readJson(request); } catch { return json({ ok: false, error: "Invalid request body" }, 400); }
     const email = String(body.email || "").trim().toLowerCase();
@@ -578,6 +580,7 @@ const authApi = async (request, env, url) => {
   }
 
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
     const token = getCookie(request, COOKIE_NAME);
     if (token && token.length <= 128) {
       await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(token)).run();
