@@ -134,6 +134,15 @@ const ensurePaperSchema = async (db) => {
       price_micro INTEGER NOT NULL CHECK(price_micro > 0),
       updated_by TEXT REFERENCES users(id), updated_at TEXT NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS market_price_targets (
+      instrument_id TEXT PRIMARY KEY REFERENCES market_instruments(id) ON DELETE CASCADE,
+      target_price_micro INTEGER NOT NULL CHECK(target_price_micro > 0),
+      from_price_micro INTEGER NOT NULL CHECK(from_price_micro > 0),
+      transition_started_at TEXT NOT NULL,
+      transition_seconds INTEGER NOT NULL CHECK(transition_seconds BETWEEN 60 AND 86400),
+      updated_by TEXT REFERENCES users(id),
+      updated_at TEXT NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS paper_accounts (
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       cash_cents INTEGER NOT NULL DEFAULT 1000000 CHECK(cash_cents >= 0),
@@ -274,24 +283,41 @@ const bytesToBase64 = (bytes) => {
 
 const runScheduledMarketBots = async (db) => {
   await ensurePaperSchema(db);
-  const result = await db.prepare("SELECT b.instrument_id AS instrumentId,b.volatility_bps AS volatilityBps,b.drift_bps AS driftBps,p.price_micro AS priceMicro FROM market_bots b JOIN market_prices p ON p.instrument_id=b.instrument_id JOIN market_instruments i ON i.id=b.instrument_id WHERE b.enabled=1 AND i.is_active=1 AND i.symbol='USD/SYP'").all();
+  const result = await db.prepare(`SELECT b.instrument_id AS instrumentId,b.volatility_bps AS volatilityBps,
+    b.drift_bps AS driftBps,p.price_micro AS priceMicro,t.target_price_micro AS targetPriceMicro,
+    t.from_price_micro AS fromPriceMicro,t.transition_started_at AS transitionStartedAt,
+    t.transition_seconds AS transitionSeconds
+    FROM market_bots b JOIN market_prices p ON p.instrument_id=b.instrument_id
+    JOIN market_instruments i ON i.id=b.instrument_id
+    LEFT JOIN market_price_targets t ON t.instrument_id=b.instrument_id
+    WHERE b.enabled=1 AND i.is_active=1 AND i.symbol='USD/SYP'`).all();
   let changed=0;
   for (const bot of (result.results || [])) {
-    const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
-    const noise=(bytes[0]/4294967295)*2-1;
-    const previous=Number(bot.priceMicro);
-    const base=await db.prepare("SELECT rate FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first();
-    const target=Number(base?.rate||0)*1000000;
-    const reversion=target>0?Math.max(-300,Math.min(300,Math.round(((target-previous)/target)*1200))):0;
-    // Apply the configured drift as well as volatility, while retaining the existing per-tick movement cap.
-    const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
-    const next=Math.max(1,Math.round(previous*(1+(reversion+boundedMove)/10000)));
-    if(!Number.isSafeInteger(next)||next===previous)continue;
+    const previous=Number(bot.priceMicro),target=Number(bot.targetPriceMicro||0);
+    const started=Date.parse(String(bot.transitionStartedAt||""));
+    const durationMs=Number(bot.transitionSeconds||0)*1000;
+    const elapsed=Date.now()-started;
+    const transitioning=Number.isSafeInteger(target)&&target>0&&Number.isSafeInteger(Number(bot.fromPriceMicro))&&
+      Number(bot.fromPriceMicro)>0&&Number.isFinite(started)&&durationMs>=60000&&elapsed>=0&&elapsed<durationMs;
+    let next;
+    if(transitioning){
+      const from=BigInt(bot.fromPriceMicro),to=BigInt(target);
+      next=Number(from+(to-from)*BigInt(Math.max(0,elapsed))/BigInt(durationMs));
+    }else{
+      const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
+      const noise=(bytes[0]/4294967295)*2-1;
+      const baseTarget=target>0?target:Number((await db.prepare("SELECT rate*1000000 AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||previous);
+      const reversion=baseTarget>0?Math.max(-300,Math.min(300,Math.round(((baseTarget-previous)/baseTarget)*1200))):0;
+      const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
+      next=Math.max(1,Math.round(previous*(1+(reversion+boundedMove)/10000)));
+    }
+    if(!Number.isSafeInteger(next)||next<=0||next===previous)continue;
     const now=new Date().toISOString();
     const batch=await db.batch([
       db.prepare("UPDATE market_prices SET price_micro=?,updated_at=? WHERE instrument_id=? AND price_micro=? AND EXISTS (SELECT 1 FROM market_bots WHERE instrument_id=? AND enabled=1)").bind(next,now,bot.instrumentId,previous,bot.instrumentId),
       db.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) SELECT ?,?,?,'bot',? WHERE changes()=1").bind(crypto.randomUUID(),bot.instrumentId,next,now),
-      db.prepare("UPDATE market_bots SET last_tick_at=? WHERE instrument_id=? AND enabled=1").bind(now,bot.instrumentId)
+      db.prepare("UPDATE market_bots SET last_tick_at=? WHERE instrument_id=? AND enabled=1").bind(now,bot.instrumentId),
+      db.prepare("UPDATE exchange_rates SET rate=?,updated_at=? WHERE base_symbol='USD' AND quote_symbol='SYP' AND EXISTS(SELECT 1 FROM market_prices WHERE instrument_id=? AND price_micro=?)").bind(next/1000000,now,bot.instrumentId,next)
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0)changed++;
   }
@@ -728,16 +754,20 @@ const walletApi = async (request, env, url) => {
       return json({ ok: false, error: "سعر الصرف غير صحيح" }, 400);
     }
     const now=new Date().toISOString(),priceMicro=Math.round(rate*1000000);
+    const transitionMinutes=Number(body.transitionMinutes??15);
     if(!Number.isSafeInteger(priceMicro)||priceMicro<=0)return json({ok:false,error:"سعر الصرف خارج النطاق المقبول"},400);
+    if(!Number.isInteger(transitionMinutes)||transitionMinutes<1||transitionMinutes>1440)
+      return json({ok:false,error:"مدة الوصول يجب أن تكون بين دقيقة و24 ساعة"},400);
     await ensureSypMarket(env.DB);
+    const current=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id='syr-usd-syp'").first();
+    const fromPriceMicro=Number(current?.priceMicro||priceMicro);
+    if(!Number.isSafeInteger(fromPriceMicro)||fromPriceMicro<=0)return json({ok:false,error:"تعذر قراءة السعر الحالي"},409);
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?) ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(rate,user.id,now),
-      env.DB.prepare("INSERT INTO market_prices(instrument_id,price_micro,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,user.id,now),
-      env.DB.prepare("INSERT INTO market_price_history(id,instrument_id,price_micro,source,created_at) VALUES(?,'syr-usd-syp',?,'manual',?)").bind(crypto.randomUUID(),priceMicro,now),
+      env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
     ]);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
-    return json({ok:true,rate,botEnabled:true});
+    return json({ok:true,targetRate:rate,fromPrice:Number(fromPriceMicro)/1000000,transitionMinutes,botEnabled:true});
   }
 
   if (url.pathname === "/api/wallet/member-code" && request.method === "GET") {
