@@ -947,9 +947,9 @@
     const assetSymbol=$("reserveAsset").value,amount=Number($("reserveAmount").value);
     if(!Number.isFinite(amount)||amount<=0||(assetSymbol==="SYP"&&!Number.isSafeInteger(amount))){message($("platformReserveMessage"),"أدخل مبلغاً صحيحاً؛ الليرة أعداد صحيحة والدولار يقبل منزلتين عشريتين.","error");button.disabled=false;return;}
     try{
-      await api("/api/admin/platform-reserve/topup",{method:"POST",body:JSON.stringify({assetSymbol,amountMinor:Math.round(amount*(assetSymbol==="USD"?100:1)),externalReference:$("reserveReference").value.trim(),note:$("reserveNote").value.trim(),confirmedExternalFunding:$("reserveFundingConfirmed").checked})});
+      const result=await api("/api/admin/platform-reserve/topup",{method:"POST",body:JSON.stringify({assetSymbol,amountMinor:Math.round(amount*(assetSymbol==="USD"?100:1)),externalReference:$("reserveReference").value.trim(),note:$("reserveNote").value.trim(),confirmedExternalFunding:$("reserveFundingConfirmed").checked})});
       form.reset();$("reserveAsset").value=assetSymbol;
-      message($("platformReserveMessage"),"تم تسجيل تمويل الاحتياطي وحفظ مرجعه.","success");
+      message($("platformReserveMessage"),result.coverageSynced===false?"تم تسجيل التمويل، لكن تعذر تحديث حساب التغطية تلقائياً. لا تفتح صفقات جديدة قبل مراجعة الاحتياطي.":"تم تسجيل تمويل الاحتياطي وحفظ مرجعه.","success");
       await loadPlatformReserve();
     }catch(error){message($("platformReserveMessage"),error.message,"error");}
     finally{button.disabled=false;}
