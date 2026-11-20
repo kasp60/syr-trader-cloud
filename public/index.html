@@ -20,7 +20,7 @@
     button.primary{background:var(--accent);color:#06251d;font-weight:800}button:disabled{opacity:.55;cursor:wait}
     .tabs button[aria-selected=true]{background:var(--accent);color:#06251d;font-weight:700}
     label{display:block;font-size:13px;color:#c4d1df;margin:13px 0 7px}
-    input{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit;outline:none}
+    input,textarea{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit;outline:none}textarea{resize:vertical}
     input:focus{border-color:var(--accent)}.form-actions{margin-top:18px}.form-actions button{width:100%}
     .message{min-height:24px;margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7}.message.error{color:var(--danger)}.message.success{color:var(--accent)}
     .hidden{display:none!important}.account-line{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.account-line span:first-child{color:var(--muted)}
@@ -29,7 +29,7 @@
     .subpanel{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.subpanel h3{font-size:16px;margin:0 0 12px}
     .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
     select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit}
-    .notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
+    .divider{border-top:1px solid var(--line);margin:20px 0}.notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
     .app-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}.app-nav button{flex:1;min-width:88px}.app-nav button[aria-current="page"]{background:var(--accent);color:#06251d;font-weight:800}.app-page{display:none}.app-page.active{display:block}.app-page>section{margin-top:18px}
@@ -156,7 +156,7 @@
         </section>
         <section id="page-admin" class="app-page">
         <section id="adminPanel" class="subpanel hidden">
-          <h3 style="margin-top:22px">طلبات الإيداع والسحب</h3><div id="adminFinanceRequests" class="muted">جارٍ تحميل الطلبات...</div>
+          <h3 style="margin-top:22px">طلبات الإيداع والسحب</h3><p class="muted">تحقق من وصول حوالة Binance قبل قبول الإيداع. وفي طلب السحب، نفّذ التحويل خارج المنصة أولاً ثم اضغط قبول؛ الرفض يعيد المبلغ تلقائياً للعضو.</p><div id="adminFinanceRequests" class="muted">جارٍ تحميل الطلبات...</div>
           <h3>إدارة المستخدمين</h3>
           <p class="muted">يمكنك تفعيل الحسابات الموقوفة أو إيقاف حساب مستخدم. لا يمكن إيقاف حسابك الحالي أو آخر مدير نشط.</p>
           <div id="adminUsersList" class="muted">جارٍ تحميل المستخدمين...</div>
