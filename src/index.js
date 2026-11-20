@@ -606,6 +606,35 @@ const authApi = async (request, env, url) => {
     );
   }
 
+  if (url.pathname === "/api/auth/change-password" && request.method === "POST") {
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+    const user = await currentUser(request, env.DB);
+    if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+    let body;
+    try { body = await readJson(request); } catch { return json({ ok: false, error: "بيانات الطلب غير صحيحة" }, 400); }
+    const currentPassword = String(body.currentPassword || "");
+    const newPassword = String(body.newPassword || "");
+    if (currentPassword.length > 128 || newPassword.length < 10 || newPassword.length > 128) {
+      return json({ ok: false, error: "كلمة المرور الجديدة يجب أن تكون بين 10 و128 حرفاً" }, 400);
+    }
+    const record = await env.DB.prepare("SELECT password_hash FROM users WHERE id=? LIMIT 1").bind(user.id).first();
+    if (!record || !(await verifyPassword(currentPassword, record.password_hash))) {
+      return json({ ok: false, error: "كلمة المرور الحالية غير صحيحة" }, 401);
+    }
+    const digest = await passwordHash(newPassword);
+    const updated = await env.DB.prepare("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?")
+      .bind(digest, user.id, record.password_hash).run();
+    if (!updated.meta?.changes) return json({ ok: false, error: "تغيرت بيانات الحساب؛ أعد المحاولة" }, 409);
+    const token = getCookie(request, COOKIE_NAME);
+    if (token && token.length <= 128) {
+      const tokenHash = await sha256(token);
+      await env.DB.prepare("DELETE FROM sessions WHERE user_id=? AND token_hash<>?").bind(user.id, tokenHash).run();
+    } else {
+      await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id).run();
+    }
+    return json({ ok: true });
+  }
+
   if (url.pathname === "/api/auth/logout-others" && request.method === "POST") {
     if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
     const user = await currentUser(request, env.DB);
