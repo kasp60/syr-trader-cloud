@@ -349,14 +349,15 @@
     $("accountEmail").textContent = data.user.email;
     $("accountRole").textContent = data.user.role === "admin" ? "مدير" : "مستخدم";
     $("memberCodeValue").textContent = data.memberCode || "—";
-    const totalSyp=Number(syp?.balanceMinor||0)+((Number(usd?.balanceMinor||0)/100)*Number(data.exchangeRate?.rate||0));
-    $("totalPortfolioValue").textContent=totalSyp.toLocaleString("en-US",{maximumFractionDigits:0})+" ليرة";
-    $("dailyPortfolioChange").textContent="التغير اليومي: غير متاح حالياً";
     $("walletMemberCode").textContent = data.memberCode || "—";
     currentWalletRate = Number(data.exchangeRate?.rate || 0);
     const wallets = data.wallets || [];
     const syp = wallets.find((w) => w.symbol === "SYP");
     const usd = wallets.find((w) => w.symbol === "USD");
+    const totalSyp = Number(syp?.balanceMinor || 0) +
+      ((Number(usd?.balanceMinor || 0) / 100) * Number(data.exchangeRate?.rate || 0));
+    $("totalPortfolioValue").textContent = totalSyp.toLocaleString("en-US", {maximumFractionDigits:0}) + " ليرة";
+    $("dailyPortfolioChange").textContent = "التغير اليومي: غير متاح حالياً";
     $("sypBalance").textContent = Number(syp?.balanceMinor || 0).toLocaleString("en-US");
     $("usdBalance").textContent = (Number(usd?.balanceMinor || 0) / 100).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
     const rateText = data.exchangeRate?.rate > 0
