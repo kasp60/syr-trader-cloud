@@ -27,7 +27,7 @@
     .balance{font-size:32px;font-weight:800;color:var(--accent);margin:10px 0}.muted{color:var(--muted);font-size:13px;line-height:1.8}
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}#userWallets{grid-template-columns:1fr}.card{min-height:130px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0}
     .subpanel{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.subpanel h3{font-size:16px;margin:0 0 12px}
-    .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+    .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.ledger-row>span{flex:1;min-width:0}.ledger-row button{white-space:nowrap}
     select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#1b2d42;color:var(--text);font:inherit}
     .divider{border-top:1px solid var(--line);margin:20px 0}.notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
@@ -481,7 +481,7 @@
         const entry=(Number(t.entryPriceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2});
         const current=Number(t.currentPriceMicro)/1000000;
         const change=(current-Number(t.entryPriceMicro)/1000000)*(t.direction==="long"?1:-1);
-        const pnl=change*Number(t.quantityMicro)/100;
+        const pnl=change*Number(t.quantityMicro);
         info.textContent=(t.direction==="long"?"شراء / لونغ":"بيع / شورت")+" · "+qty+" · دخول "+entry+" ليرة · 20x · ربح/خسارة تقديري "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
         const close=document.createElement("button");close.type="button";close.className="primary";close.textContent="إغلاق الصفقة";
         close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
@@ -505,7 +505,7 @@
   const drawMarketChart = points => {
     const svg=$("marketChart");svg.replaceChildren();const ns="http://www.w3.org/2000/svg";
     const el=(tag,attrs)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;};
-    [45,100,155,210].forEach(y=>svg.appendChild(el("line",{x1:30,y1:y,x2:870,y2:y,stroke:"#26364c","stroke-dasharray":"4 6"})));
+    [45,100,155,210].forEach(y=>svg.appendChild(el("line",{x1:30,y1:y,x2:870,y2:y,stroke:"#45617d","stroke-dasharray":"4 6"})));
     if(!points.length){const t=el("text",{x:450,y:135,fill:"#9aabc0","text-anchor":"middle"});t.textContent="لا توجد حركة مسجلة بعد";svg.appendChild(t);return;}
     const vals=points.map(p=>Number(p.priceMicro)/1000000),lo=Math.min(...vals),hi=Math.max(...vals),range=Math.max(hi-lo,Math.abs(hi)*0.0001,0.000001);
     const coords=vals.map((v,i)=>[30+i*840/Math.max(1,vals.length-1),225-(v-lo)/range*180]);
