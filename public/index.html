@@ -82,6 +82,7 @@
           <div id="paperMessage" class="message" role="status" aria-live="polite"></div>
           <h3 style="margin-top:20px">المراكز التجريبية</h3><div id="paperPositions" class="muted">—</div>
           <h3 style="margin-top:20px">آخر الأوامر التجريبية</h3><div id="paperOrders" class="muted">—</div>
+          <h3 style="margin-top:20px">سجل حركات التداول التجريبي</h3><div id="paperHistory" class="muted">جارٍ تحميل السجل...</div>
         </section>
         <section id="ledgerPanel" class="subpanel">
           <h3>آخر حركات المحفظة</h3>
@@ -170,6 +171,7 @@
     if (data.user.role === "admin" && data.exchangeRate?.rate > 0) $("exchangeRateInput").value = data.exchangeRate.rate;
     loadLedger();
     loadPaperMarket();
+    loadPaperHistory();
     if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); }
     else $("adminPanel").classList.add("hidden");
   };
@@ -263,6 +265,22 @@
     } catch (error) { list.textContent = error.message; }
   };
 
+  const loadPaperHistory = async () => {
+    const container=$("paperHistory");
+    if(!container)return;
+    container.replaceChildren();
+    try{
+      const data=await api("/api/paper/history",{headers:{}});
+      if(!data.entries.length){container.textContent="لا توجد حركات تداول تجريبية بعد.";return;}
+      data.entries.forEach(entry=>{
+        const side=entry.side==="buy"?"شراء":"بيع";
+        const qty=(Math.abs(Number(entry.quantityDeltaMicro))/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+        const cash=(Math.abs(Number(entry.cashDeltaCents))/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+        const date=new Date(entry.createdAt).toLocaleString("ar");
+        addTextRow(container,side+" · "+entry.symbol+" · "+qty+" · "+cash+" USD",date);
+      });
+    }catch(error){container.textContent=error.message;}
+  };
   const loadAdminMarketInstruments = async () => {
     const container=$("adminMarketInstruments");
     if(!container)return;
@@ -411,6 +429,7 @@
       $("paperQuantity").value="";
       message($("paperMessage"),"تم تنفيذ "+(result.side==="buy"?"الشراء":"البيع")+" التجريبي بنجاح.","success");
       await loadPaperMarket();
+      await loadPaperHistory();
     } catch(error) { message($("paperMessage"),error.message,"error"); }
     finally { button.disabled=false; }
   });
