@@ -681,7 +681,7 @@ class MainActivity : Activity() {
                             try {
                                 val payload = JSONObject().put("instrumentId", instrument.optString("id")).put("direction", direction).put("margin", amount).put("leverage", lev)
                                 val response = request("POST", "/api/paper/trade-open", payload.toString(), cookie)
-                                runOnUiThread { result.text = "تم فتح الصفقة. رقمها: ${response.optString("tradeId")}"; button.isEnabled = true }
+                                runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "تم فتح الصفقة بنجاح", android.widget.Toast.LENGTH_LONG).show(); loadPositions(cookie) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.text = e.message ?: "تعذر فتح الصفقة"; button.isEnabled = true }
                             }
@@ -715,8 +715,8 @@ class MainActivity : Activity() {
                                     .put("direction", direction).put("margin", amount).put("leverage", lev).put("limitPrice", target)
                                 val response = request("POST", "/api/paper/limit-order", payload.toString(), cookie)
                                 runOnUiThread {
-                                    result.text = "تم تسجيل الأمر المعلّق: ${response.optString("orderId")}"
-                                    button.isEnabled = true
+                                    android.widget.Toast.makeText(this@MainActivity, "تم تسجيل الأمر المعلّق", android.widget.Toast.LENGTH_LONG).show()
+                                    loadPositions(cookie)
                                 }
                             } catch (e: Exception) {
                                 runOnUiThread { result.text = e.message ?: "تعذر تسجيل الأمر"; button.isEnabled = true }
