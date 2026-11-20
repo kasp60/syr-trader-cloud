@@ -25,7 +25,7 @@
     .message{min-height:24px;margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7}.message.error{color:var(--danger)}.message.success{color:var(--accent)}
     .hidden{display:none!important}.account-line{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.account-line span:first-child{color:var(--muted)}
     .balance{font-size:32px;font-weight:800;color:var(--accent);margin:10px 0}.muted{color:var(--muted);font-size:13px;line-height:1.8}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.card{min-height:130px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}#userWallets{grid-template-columns:1fr}.card{min-height:130px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0}
     .subpanel{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.subpanel h3{font-size:16px;margin:0 0 12px}
     .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
     select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit}
@@ -482,7 +482,7 @@
       if(!data.orders.length) orders.textContent="لا توجد أوامر تجريبية بعد.";
       else data.orders.forEach(o=>{
         const qty=(Number(o.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
-        const total=(Number(o.totalCents)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" USD";
+        const total=(Number(o.totalCents)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة";
         addTextRow(orders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol+" · "+qty,total);
       });
     } catch(error) { $("paperMarketList").textContent=error.message; }
@@ -596,7 +596,9 @@
         body: JSON.stringify({ rate: Number($("exchangeRateInput").value) })
       });
       $("exchangeRateView").textContent = "سعر الإدارة: 1 دولار = " + Number(data.rate).toLocaleString("en-US") + " ليرة";
-      message($("rateMessage"), "تم حفظ سعر الصرف.", "success");
+      message($("rateMessage"), "تم حفظ سعر الصرف وتشغيل بوت حركة السوق.", "success");
+      await loadPaperMarket();
+      await loadTradingChart();
     } catch (error) { message($("rateMessage"), error.message, "error"); }
     finally { button.disabled = false; }
   });
