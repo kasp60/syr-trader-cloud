@@ -537,8 +537,22 @@
           info.append(name,detail);row.appendChild(info);
           if(type==="deposit"){
             const proof=document.createElement("button");proof.type="button";proof.textContent="عرض الإثبات";
-            proof.addEventListener("click",()=>window.open("/api/admin/deposit-proof?id="+encodeURIComponent(item.id),"_blank","noopener"));
-            row.appendChild(proof);
+            const preview=document.createElement("div");preview.style.width="100%";preview.style.marginTop="10px";
+            proof.addEventListener("click",async()=>{
+              if(preview.querySelector("img")){preview.hidden=!preview.hidden;proof.textContent=preview.hidden?"عرض الإثبات":"إخفاء الإثبات";return;}
+              proof.disabled=true;proof.textContent="جارٍ تحميل الصورة...";
+              try{
+                const response=await fetch("/api/admin/deposit-proof?id="+encodeURIComponent(item.id),{method:"GET",credentials:"same-origin",cache:"no-store"});
+                if(!response.ok){let error="تعذر فتح صورة الإثبات";try{const data=await response.json();if(data.error)error=data.error;}catch{}throw new Error(error);}
+                const blob=await response.blob();
+                if(!["image/jpeg","image/png","image/webp"].includes(blob.type))throw new Error("الملف المستلم ليس صورة صالحة");
+                const image=document.createElement("img");image.alt="صورة إثبات الإيداع";image.src=URL.createObjectURL(blob);
+                image.style.cssText="display:block;max-width:min(100%,420px);max-height:520px;object-fit:contain;border-radius:12px;border:1px solid var(--border,#334155);margin-top:8px;background:#fff";
+                preview.appendChild(image);preview.hidden=false;proof.textContent="إخفاء الإثبات";
+              }catch(error){message($("adminMessage"),error.message,"error");proof.textContent="إعادة المحاولة";}
+              finally{proof.disabled=false;}
+            });
+            row.append(proof,preview);
           }
           if(item.status==="pending"){
             const actions=document.createElement("div");actions.style.display="flex";actions.style.gap="6px";
