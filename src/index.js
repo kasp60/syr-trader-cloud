@@ -427,7 +427,7 @@ export default {
       }
     }
 
-    if (url.pathname.startsWith("/api/wallet/") || url.pathname.startsWith("/api/admin/")) {
+    if (url.pathname.startsWith("/api/wallet/") || url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/api/market/")) {
       try { return await walletApi(request, env, url); }
       catch (error) {
         console.error("SYR_TRADER_WALLET_ERROR", {
