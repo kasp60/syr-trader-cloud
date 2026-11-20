@@ -342,8 +342,12 @@ const walletApi = async (request, env, url) => {
         side==="buy"?-totalCents:totalCents,side==="buy"?quantityMicro:-quantityMicro,
         instrumentId,instrument.priceMicro,now);
     const statements=side==="buy"?[
-      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?")
-        .bind(totalCents,now,user.id,totalCents),
+      env.DB.prepare(`UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=?
+        WHERE user_id=? AND cash_cents>=?
+          AND EXISTS(SELECT 1 FROM market_instruments WHERE id=? AND is_active=1)
+          AND NOT EXISTS(SELECT 1 FROM paper_positions
+            WHERE user_id=? AND instrument_id=? AND quantity_micro>9007199254740991-?)`)
+        .bind(totalCents,now,user.id,totalCents,instrumentId,user.id,instrumentId,quantityMicro),
       env.DB.prepare(`INSERT INTO paper_positions (user_id,instrument_id,quantity_micro)
         SELECT ?,?,? WHERE changes()=1
         ON CONFLICT(user_id,instrument_id) DO UPDATE SET quantity_micro=quantity_micro+excluded.quantity_micro
@@ -352,8 +356,11 @@ const walletApi = async (request, env, url) => {
       orderInsert,
       ledgerInsert
     ]:[
-      env.DB.prepare("UPDATE paper_positions SET quantity_micro=quantity_micro-? WHERE user_id=? AND instrument_id=? AND quantity_micro>=?")
-        .bind(quantityMicro,user.id,instrumentId,quantityMicro),
+      env.DB.prepare(`UPDATE paper_positions SET quantity_micro=quantity_micro-?
+        WHERE user_id=? AND instrument_id=? AND quantity_micro>=?
+          AND EXISTS(SELECT 1 FROM paper_accounts WHERE user_id=? AND cash_cents<=9007199254740991-?)
+          AND EXISTS(SELECT 1 FROM market_instruments WHERE id=? AND is_active=1)`)
+        .bind(quantityMicro,user.id,instrumentId,quantityMicro,user.id,totalCents,instrumentId),
       env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-? AND changes()=1")
         .bind(totalCents,now,user.id,totalCents),
       orderInsert,
