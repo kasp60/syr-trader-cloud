@@ -279,8 +279,9 @@
         const side=entry.side==="buy"?"شراء":"بيع";
         const qty=(Math.abs(Number(entry.quantityDeltaMicro))/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
         const cash=(Math.abs(Number(entry.cashDeltaCents))/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+        const price=(Number(entry.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
         const date=new Date(entry.createdAt).toLocaleString("ar");
-        addTextRow(container,side+" · "+entry.symbol+" · "+qty+" · "+cash+" USD",date);
+        addTextRow(container,side+" · "+entry.symbol+" · "+qty+" · سعر "+price+" USD · إجمالي "+cash+" USD",date);
       });
     }catch(error){container.textContent=error.message;}
   };
