@@ -474,7 +474,7 @@
       else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
       const terminalOrders=$("terminalOrders");terminalOrders.replaceChildren();
       if(!data.orders.length)terminalOrders.textContent="لا توجد صفقات منفذة.";
-      else data.orders.forEach(o=>addTextRow(terminalOrders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol,(Number(o.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" · "+(Number(o.totalCents)/100).toFixed(2)+" USD"));
+      else data.orders.forEach(o=>addTextRow(terminalOrders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol,(Number(o.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" · "+(Number(o.totalCents)/100).toFixed(2)+" ليرة"));
       const positions=$("paperPositions"); positions.replaceChildren();
       if(!data.positions.length) positions.textContent="لا توجد مراكز تجريبية مفتوحة.";
       else data.positions.forEach(p=>addTextRow(positions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
