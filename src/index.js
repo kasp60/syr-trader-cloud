@@ -121,6 +121,47 @@ const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
 
+  if (url.pathname === "/api/admin/users" && request.method === "GET") {
+    if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+    const rows = await env.DB.prepare(
+      `SELECT id, email, display_name AS displayName, role, status, created_at AS createdAt
+       FROM users ORDER BY created_at DESC LIMIT 500`
+    ).all();
+    return json({ ok: true, users: rows.results || [] });
+  }
+
+  if (url.pathname === "/api/admin/user-status" && request.method === "POST") {
+    if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+    let body;
+    try { body = await readJson(request); } catch { return json({ ok: false, error: "بيانات الطلب غير صحيحة" }, 400); }
+    const userId = String(body.userId || "");
+    const status = String(body.status || "");
+    if (!userId || userId.length > 80 || !["active", "suspended"].includes(status)) {
+      return json({ ok: false, error: "بيانات المستخدم غير صحيحة" }, 400);
+    }
+    if (userId === user.id && status === "suspended") {
+      return json({ ok: false, error: "لا يمكنك إيقاف حسابك الحالي" }, 400);
+    }
+    const target = await env.DB.prepare(
+      "SELECT id, role, status FROM users WHERE id = ? LIMIT 1"
+    ).bind(userId).first();
+    if (!target) return json({ ok: false, error: "المستخدم غير موجود" }, 404);
+    if (target.role === "admin" && target.status === "active" && status === "suspended") {
+      const admins = await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND status = 'active'"
+      ).first();
+      if (Number(admins?.count || 0) <= 1) {
+        return json({ ok: false, error: "لا يمكن إيقاف المدير النشط الأخير" }, 409);
+      }
+    }
+    await env.DB.prepare("UPDATE users SET status = ? WHERE id = ?").bind(status, userId).run();
+    if (status === "suspended") {
+      await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
+    }
+    return json({ ok: true, userId, status });
+  }
+
   if (url.pathname === "/api/admin/wallets" && request.method === "GET") {
     if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
     const rows = await env.DB.prepare(
