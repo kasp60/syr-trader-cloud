@@ -34,11 +34,12 @@
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
     .app-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}.app-nav button{flex:1;min-width:88px}.app-nav button[aria-current="page"]{background:var(--accent);color:#06251d;font-weight:800}.app-page{display:none}.app-page.active{display:block}.app-page>section{margin-top:18px}
     .trade-workspace{margin-top:20px}.trade-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.7fr);gap:16px}
-    .chart-panel{background:#1d3857;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
+    .chart-panel{background:linear-gradient(155deg,#102b49,#0b1c31);border:1px solid #315778;border-radius:18px;padding:16px;box-shadow:0 16px 42px rgba(0,0,0,.24);overflow:hidden}.chart-panel svg{width:100%;height:clamp(360px,48vw,520px);display:block}
+    .chart-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.chart-stats>div,.trade-wallet-balances>div{background:#173957;border:1px solid #315778;border-radius:13px;padding:13px;display:flex;flex-direction:column;gap:7px}.chart-stats span,.trade-wallet-balances span{font-size:12px;color:#b6cbe0}.chart-stats strong,.trade-wallet-balances strong{font-size:17px;color:#f1f8ff;font-variant-numeric:tabular-nums}.trade-wallet-balances{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
     .trade-toolbar,.trade-tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0}.trade-toolbar select{max-width:220px}
     .trade-tabs button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.trade-view{display:none}.trade-view.active{display:block}
     .bot-pill{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:5px 9px;color:var(--muted)}.bot-pill.running{color:var(--accent);border-color:var(--accent)}
-    @media(max-width:760px){.trade-grid{grid-template-columns:1fr}.chart-panel svg{height:230px}}
+    @media(max-width:760px){.trade-grid{grid-template-columns:1fr}.chart-panel{padding:8px}.chart-panel svg{height:360px}.chart-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-stats strong{font-size:15px}}
   </style>
 </head>
 <body>
@@ -112,11 +113,12 @@
           <h3>التداول بالليرة</h3>
           <p class="muted">سوق واحد للدولار مقابل الليرة. المدير يحدد سعر الصرف الأولي، وبعدها يتحرك البوت تلقائياً كل دقيقة على الخادم. جميع قيم التداول معروضة بالليرة، والأسعار محاكاة وليست أسعاراً مباشرة.</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select><span id="chartLastPrice" class="bot-pill">بانتظار سعر الصرف</span><span id="chartBotStatus" class="bot-pill">البوت بانتظار سعر الإدارة</span></div>
-          <div class="chart-panel"><div class="muted">مخطط حركة سعر الصرف · آخر 180 نقطة</div><svg id="marketChart" viewBox="0 0 900 270" role="img" aria-label="مخطط سعر الدولار مقابل الليرة"><text x="450" y="135" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg></div>
+          <div class="chart-panel"><div class="muted">مخطط حركة سعر الصرف · آخر 180 نقطة</div><svg id="marketChart" viewBox="0 0 1100 440" role="img" aria-label="مخطط احترافي لسعر الدولار مقابل الليرة"><text x="550" y="220" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg></div>
+          <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
           <div class="subpanel">
             <h3>صفقة تجريبية</h3>
-            <div class="account-line"><span>الرصيد التجريبي</span><strong id="terminalCash">10,000 ليرة</strong></div><div class="notice">اختر الرافعة لكل صفقة من 1x إلى 20x. كلما زادت الرافعة زادت المخاطرة، والتداول هنا تجريبي فقط.</div>
+            <div class="trade-wallet-balances"><div><span>رصيد الليرة</span><strong id="terminalSypBalance">—</strong></div><div><span>رصيد الدولار</span><strong id="terminalUsdBalance">—</strong></div></div><div class="notice">الشراء يحجز الهامش من محفظة الليرة، والبيع يحجزه من محفظة الدولار. اختر الرافعة من 1x إلى 20x؛ لكل صفقة سعر تصفية تلقائي.</div>
             <form id="terminalOrderForm">
               <label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء (لونغ)</option><option value="sell">بيع (شورت)</option></select>
               <label for="terminalLeverage">الرافعة المالية</label><select id="terminalLeverage"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option><option value="7">7x</option><option value="8">8x</option><option value="9">9x</option><option value="10">10x</option><option value="11">11x</option><option value="12">12x</option><option value="13">13x</option><option value="14">14x</option><option value="15">15x</option><option value="16">16x</option><option value="17">17x</option><option value="18">18x</option><option value="19">19x</option><option value="20">20x</option></select>
@@ -126,7 +128,7 @@
             <div id="terminalMessage" class="message" role="status"></div>
           </div>
           <div class="trade-tabs"><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button></div>
-          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>الصفقات المفتوحة</h3><div id="openTradesList" class="muted">—</div><h3>آخر الصفقات</h3><div id="terminalOrders" class="muted">—</div></div>
+          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>الصفقات المفتوحة</h3><div id="openTradesList" class="muted">—</div><h3>سجل الصفقات المغلقة والتصفية</h3><div id="closedTradesList" class="muted">—</div><h3>آخر الأوامر</h3><div id="terminalOrders" class="muted">—</div></div>
           <div id="tradeTerminalView" class="trade-view active"></div>
         </section>
         <section id="paperMarketPanel" class="subpanel hidden" aria-hidden="true">
@@ -471,7 +473,7 @@
   const loadPaperMarket = async () => {
     try {
       const data = await api("/api/market/board", { headers: {} });
-      $("paperCash").textContent = (Number(data.cashCents || 0) / 100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " ليرة";
+      $("paperCash").textContent = "تداول بالمحافظ";
       const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument"), chartSelect=$("chartInstrument");
       market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren(); chartSelect.replaceChildren();
       data.market.forEach(item => {
@@ -483,7 +485,9 @@
         const adminOpt=opt.cloneNode(true); adminSelect.appendChild(adminOpt); chartSelect.appendChild(opt.cloneNode(true));
       });
       if(!data.market.length) market.textContent="لا توجد أدوات سوق بعد. يمكن للمدير إضافتها من لوحة الإدارة.";
-      $("terminalCash").textContent=$("paperCash").textContent;
+      const walletValue=symbol=>{const w=(data.wallets||[]).find(x=>x.symbol===symbol);return Number(w?.balanceMinor||0)/(symbol==="USD"?100:1);};
+      $("terminalSypBalance").textContent=walletValue("SYP").toLocaleString("en-US",{maximumFractionDigits:0})+" ليرة";
+      $("terminalUsdBalance").textContent=walletValue("USD").toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" دولار";
       if(chartSelect.value) await loadTradingChart();
       const terminalPositions=$("terminalPositions");terminalPositions.replaceChildren();
       if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
@@ -494,14 +498,21 @@
         const row=document.createElement("div");row.className="ledger-row";
         const info=document.createElement("span");
         const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
-        const entry=(Number(t.entryPriceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2});
-        const current=Number(t.currentPriceMicro)/1000000;
-        const change=(current-Number(t.entryPriceMicro)/1000000)*(t.direction==="long"?1:-1);
-        const pnl=change*Number(t.quantityMicro);
-        info.textContent=(t.direction==="long"?"شراء / لونغ":"بيع / شورت")+" · "+qty+" · دخول "+entry+" ليرة · " + Number(t.leverage) + "x · ربح/خسارة تقديري "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
+        const entry=Number(t.entryPriceMicro)/1000000,current=Number(t.currentPriceMicro)/1000000,liq=Number(t.liquidationPriceMicro)/1000000;
+        const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+        const pnl=t.direction==="long"?(current-entry)*Number(t.quantityMicro)/1000000:(entry-current)/entry*(Number(t.quantityMicro)/1000000);
+        info.textContent=(t.direction==="long"?"شراء / خصم ليرة":"بيع / خصم دولار")+" · كمية "+qty+" · دخول "+entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة · تصفية "+liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة · هامش "+(Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset+" · "+Number(t.leverage)+"x · ربح/خسارة تقديري "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset;
         const close=document.createElement("button");close.type="button";close.className="primary";close.textContent="إغلاق الصفقة";
-        close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
+        close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
         row.append(info,close);openTrades.appendChild(row);
+      });
+      const closedList=$("closedTradesList");closedList.replaceChildren();
+      if(!data.closedTrades?.length)closedList.textContent="لا توجد صفقات مغلقة بعد.";
+      else data.closedTrades.forEach(t=>{
+        const status=t.status==="liquidated"?"تصفية تلقائية":"مغلقة يدوياً";
+        const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+        const pnl=Number(t.pnlCents)/(t.marginAssetSymbol==="USD"?100:1);
+        addTextRow(closedList,(t.direction==="long"?"شراء":"بيع")+" · "+status+" · "+new Date(t.closedAt).toLocaleString("ar"),"دخول "+(Number(t.entryPriceMicro)/1000000).toLocaleString("en-US")+" · خروج "+(Number(t.exitPriceMicro)/1000000).toLocaleString("en-US")+" ليرة · النتيجة "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
       });
       const terminalOrders=$("terminalOrders");terminalOrders.replaceChildren();
       if(!data.orders.length)terminalOrders.textContent="لا توجد صفقات منفذة.";
@@ -521,14 +532,24 @@
   const drawMarketChart = points => {
     const svg=$("marketChart");svg.replaceChildren();const ns="http://www.w3.org/2000/svg";
     const el=(tag,attrs)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;};
-    [45,100,155,210].forEach(y=>svg.appendChild(el("line",{x1:30,y1:y,x2:870,y2:y,stroke:"#45617d","stroke-dasharray":"4 6"})));
-    if(!points.length){const t=el("text",{x:450,y:135,fill:"#9aabc0","text-anchor":"middle"});t.textContent="لا توجد حركة مسجلة بعد";svg.appendChild(t);return;}
-    const vals=points.map(p=>Number(p.priceMicro)/1000000),lo=Math.min(...vals),hi=Math.max(...vals),range=Math.max(hi-lo,Math.abs(hi)*0.0001,0.000001);
-    const coords=vals.map((v,i)=>[30+i*840/Math.max(1,vals.length-1),225-(v-lo)/range*180]);
-    const d=coords.map((p,i)=>(i?"L":"M")+p[0].toFixed(2)+" "+p[1].toFixed(2)).join(" ");
-    svg.appendChild(el("path",{d,fill:"none",stroke:"#36c9a0","stroke-width":"3","stroke-linejoin":"round","stroke-linecap":"round"}));
-    const last=coords[coords.length-1];svg.appendChild(el("circle",{cx:last[0],cy:last[1],r:5,fill:"#36c9a0"}));
-    const label=el("text",{x:35,y:25,fill:"#9aabc0","font-size":"13"});label.textContent=hi.toLocaleString("en-US",{maximumFractionDigits:6});svg.appendChild(label);
+    const addText=(x,y,value,anchor="end",size=13)=>{const t=el("text",{x,y,fill:"#a9c4dc","font-size":size,"text-anchor":anchor});t.textContent=value;svg.appendChild(t);};
+    const stats=$("chartStats");const fmt=v=>Number(v).toLocaleString("en-US",{maximumFractionDigits:2});
+    if(!points.length){addText(550,220,"لا توجد حركة مسجلة بعد","middle",18);if(stats)stats.innerHTML="<div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div>";return;}
+    const vals=points.map(p=>Number(p.priceMicro)/1000000).filter(Number.isFinite);
+    if(!vals.length)return;
+    const lo=Math.min(...vals),hi=Math.max(...vals),last=vals[vals.length-1],first=vals[0],range=Math.max(hi-lo,Math.abs(hi)*0.00015,1);
+    const left=94,right=1015,top=34,bottom=355,width=right-left,height=bottom-top;
+    const coords=vals.map((v,i)=>[left+i*width/Math.max(1,vals.length-1),bottom-(v-(lo-range*.08))/(range*1.16)*height]);
+    for(let i=0;i<=5;i++){const y=top+i*height/5,v=hi+(lo-hi)*i/5;svg.appendChild(el("line",{x1:left,y1:y,x2:right,y2:y,stroke:"#31516d","stroke-width":1,"stroke-dasharray":"4 7"}));addText(left-12,y+4,fmt(v));}
+    for(let i=0;i<=6;i++){const x=left+i*width/6;svg.appendChild(el("line",{x1:x,y1:top,x2:x,y2:bottom,stroke:"#213f5c","stroke-width":1,"stroke-dasharray":"3 8"}));}
+    const path=coords.map((p,i)=>(i?"L":"M")+p[0].toFixed(2)+" "+p[1].toFixed(2)).join(" ");
+    const area=path+" L "+coords[coords.length-1][0]+" "+bottom+" L "+coords[0][0]+" "+bottom+" Z";
+    const defs=el("defs",{}),grad=el("linearGradient",{id:"chartAreaGradient",x1:"0",x2:"0",y1:"0",y2:"1"});grad.appendChild(el("stop",{offset:"0%","stop-color":"#20d6b0","stop-opacity":".34"}));grad.appendChild(el("stop",{offset:"100%","stop-color":"#20d6b0","stop-opacity":"0"}));defs.appendChild(grad);svg.appendChild(defs);
+    svg.appendChild(el("path",{d:area,fill:"url(#chartAreaGradient)"}));
+    svg.appendChild(el("path",{d:path,fill:"none",stroke:"#28dfbd","stroke-width":"4","stroke-linejoin":"round","stroke-linecap":"round"}));
+    const lastPoint=coords[coords.length-1];svg.appendChild(el("line",{x1:left,y1:lastPoint[1],x2:right,y2:lastPoint[1],stroke:"#35e3c1","stroke-dasharray":"5 6","stroke-width":"1.5"}));svg.appendChild(el("circle",{cx:lastPoint[0],cy:lastPoint[1],r:7,fill:"#e8fffa",stroke:"#20d6b0","stroke-width":4}));
+    addText(left,bottom+34,"بداية الفترة","start",12);addText(right,bottom+34,"آخر تحديث","end",12);addText(left,top-12,"السعر (ليرة)","start",12);
+    if(stats){const change=first?((last-first)/first*100):0;stats.innerHTML="<div><span>السعر الحالي</span><strong>"+fmt(last)+" ليرة</strong></div><div><span>أعلى سعر</span><strong>"+fmt(hi)+" ليرة</strong></div><div><span>أدنى سعر</span><strong>"+fmt(lo)+" ليرة</strong></div><div><span>التغير خلال الرسم</span><strong style='color:"+(change>=0?"#45e0b4":"#ff8a9a")+"'>"+(change>=0?"+":"")+change.toFixed(2)+"%</strong></div>";}
   };
   const loadTradingChart = async () => {
     const id=$("chartInstrument")?.value;if(!id)return;
