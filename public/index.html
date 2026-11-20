@@ -26,6 +26,9 @@
     .hidden{display:none!important}.account-line{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.account-line span:first-child{color:var(--muted)}
     .balance{font-size:32px;font-weight:800;color:var(--accent);margin:10px 0}.muted{color:var(--muted);font-size:13px;line-height:1.8}
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.card{min-height:130px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0}
+    .subpanel{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.subpanel h3{font-size:16px;margin:0 0 12px}
+    .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+    select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit}
     .notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
@@ -62,6 +65,26 @@
         <div class="muted" id="walletCurrency">ليرة</div>
         <div class="form-actions"><button type="button" id="logoutButton">تسجيل الخروج</button></div>
         <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
+        <section id="ledgerPanel" class="subpanel">
+          <h3>آخر حركات المحفظة</h3>
+          <div id="ledgerList" class="muted">جارٍ تحميل الحركات...</div>
+        </section>
+        <section id="adminPanel" class="subpanel hidden">
+          <h3>إدارة المحافظ</h3>
+          <div id="adminWalletList" class="muted">جارٍ تحميل المحافظ...</div>
+          <form id="adjustForm">
+            <label for="targetWallet">المحفظة</label>
+            <select id="targetWallet" required></select>
+            <label for="adjustType">نوع الحركة</label>
+            <select id="adjustType"><option value="credit">إضافة رصيد</option><option value="debit">خصم رصيد</option></select>
+            <label for="adjustAmount">المبلغ بالليرة</label>
+            <input id="adjustAmount" type="number" min="1" step="1" required>
+            <label for="adjustNote">ملاحظة الحركة</label>
+            <input id="adjustNote" maxlength="240" placeholder="سبب التعديل">
+            <div class="form-actions"><button class="primary" type="submit">تأكيد الحركة</button></div>
+          </form>
+          <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
+        </section>
       </section>
     </section>
     <section class="grid" aria-label="أقسام المنصة">
@@ -98,6 +121,52 @@
     const amount = data.wallet ? Number(data.wallet.balanceMinor) : 0;
     $("walletBalance").textContent = Number.isFinite(amount) ? amount.toLocaleString("en-US") : "0";
     $("walletCurrency").textContent = data.wallet?.assetName || "ليرة";
+    loadLedger();
+    if (data.user.role === "admin") loadAdminWallets();
+    else $("adminPanel").classList.add("hidden");
+  };
+  const addTextRow = (container, left, right, className = "ledger-row") => {
+    const row = document.createElement("div");
+    row.className = className;
+    const a = document.createElement("span");
+    const b = document.createElement("strong");
+    a.textContent = left;
+    b.textContent = right;
+    row.append(a, b);
+    container.appendChild(row);
+  };
+  const loadLedger = async () => {
+    const container = $("ledgerList");
+    container.replaceChildren();
+    try {
+      const data = await api("/api/wallet/ledger", { headers: {} });
+      if (!data.entries.length) { container.textContent = "لا توجد حركات مسجلة."; return; }
+      data.entries.forEach((entry) => {
+        const label = entry.type === "credit" ? "إضافة" : entry.type === "debit" ? "خصم" : "تسوية";
+        const date = new Date(entry.createdAt).toLocaleString("ar");
+        addTextRow(container, label + " · " + date, Number(entry.amountMinor).toLocaleString("en-US") + " ليرة");
+      });
+    } catch (error) { container.textContent = error.message; }
+  };
+  const loadAdminWallets = async () => {
+    const panel = $("adminPanel");
+    const list = $("adminWalletList");
+    const select = $("targetWallet");
+    panel.classList.remove("hidden");
+    list.replaceChildren();
+    select.replaceChildren();
+    try {
+      const data = await api("/api/admin/wallets", { headers: {} });
+      data.wallets.forEach((wallet) => {
+        addTextRow(list, wallet.displayName + " · " + wallet.email,
+          Number(wallet.balanceMinor).toLocaleString("en-US") + " ليرة", "admin-wallet-row");
+        const option = document.createElement("option");
+        option.value = wallet.walletId;
+        option.textContent = wallet.displayName + " — " + wallet.email;
+        select.appendChild(option);
+      });
+      if (!data.wallets.length) list.textContent = "لا توجد محافظ.";
+    } catch (error) { list.textContent = error.message; }
   };
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
@@ -137,6 +206,30 @@
     } finally {
       button.disabled = false;
     }
+  });
+  $("adjustForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = $("adjustForm").querySelector("button[type=submit]");
+    button.disabled = true;
+    message($("adminMessage"), "جارٍ تسجيل الحركة...");
+    try {
+      await api("/api/admin/wallet-adjust", {
+        method: "POST",
+        body: JSON.stringify({
+          walletId: $("targetWallet").value,
+          type: $("adjustType").value,
+          amountMinor: Number($("adjustAmount").value),
+          note: $("adjustNote").value.trim(),
+          idempotencyKey: crypto.randomUUID()
+        })
+      });
+      $("adjustAmount").value = "";
+      $("adjustNote").value = "";
+      message($("adminMessage"), "تم تسجيل الحركة وتحديث الرصيد.", "success");
+      loadAdminWallets();
+      loadLedger();
+    } catch (error) { message($("adminMessage"), error.message, "error"); }
+    finally { button.disabled = false; }
   });
   $("logoutButton").addEventListener("click", async () => {
     try {
