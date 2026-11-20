@@ -792,6 +792,9 @@ class MainActivity : Activity() {
                         line.setPadding(0, dp(8), 0, dp(4))
                         content.addView(line, match())
                     }
+                    val reserveTopup = actionButton("تسجيل تمويل خارجي للاحتياطي")
+                    content.addView(reserveTopup, fieldParams())
+                    reserveTopup.setOnClickListener { showReserveTopupDialog(cookie) }
                     val marketTitle = text("إدارة سعر السوق", 17, teal, true)
                     marketTitle.gravity = Gravity.RIGHT
                     marketTitle.setPadding(0, dp(18), 0, dp(8))
@@ -864,6 +867,66 @@ class MainActivity : Activity() {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
             }
         }
+    }
+
+    private fun showReserveTopupDialog(cookie: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("عملة التمويل")
+            .setItems(arrayOf("ليرة SYP", "دولار USD")) { _, which ->
+                val symbol = if (which == 0) "SYP" else "USD"
+                val amount = input(if (symbol == "SYP") "المبلغ بالليرة" else "المبلغ بالدولار", false)
+                amount.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                val reference = input("مرجع التمويل الخارجي", false)
+                val note = input("ملاحظة توضيحية", false)
+                val fields = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(20), dp(8), dp(20), 0)
+                    addView(amount, fieldParams())
+                    addView(reference, fieldParams())
+                    addView(note, fieldParams())
+                }
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("تسجيل تمويل الاحتياطي — $symbol")
+                    .setMessage("يسجّل هذا الإجراء تمويلاً تم استلامه خارج المنصة بالفعل. لا ينفّذ أي تحويل خارجي.")
+                    .setView(fields)
+                    .setNegativeButton("إلغاء", null)
+                    .setPositiveButton("متابعة") { _, _ ->
+                        val value = amount.text.toString().trim().toDoubleOrNull()
+                        val ref = reference.text.toString().trim()
+                        val memo = note.text.toString().trim()
+                        val minorDouble = if (value == null) 0.0 else value * 100.0
+                        if (value == null || value <= 0 || (symbol == "SYP" && value % 1.0 != 0.0) ||
+                            !minorDouble.isFinite() || minorDouble > 1000000000000000.0 ||
+                            kotlin.math.abs(minorDouble - kotlin.math.round(minorDouble)) > 1e-7 ||
+                            ref.length !in 3..120 || memo.length !in 3..240) {
+                            android.widget.Toast.makeText(this, "تحقق من المبلغ والمرجع والملاحظة", android.widget.Toast.LENGTH_LONG).show()
+                        } else {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("تأكيد التمويل الخارجي")
+                                .setMessage("أؤكد أن مبلغ $value $symbol وصل فعلياً إلى حساب المنصة خارج التطبيق، وأن المرجع صحيح.")
+                                .setNegativeButton("رجوع", null)
+                                .setPositiveButton("تأكيد التسجيل") { _, _ ->
+                                    val buttonPayload = JSONObject()
+                                        .put("assetSymbol", symbol)
+                                        .put("amountMinor", kotlin.math.round(minorDouble).toLong())
+                                        .put("externalReference", ref)
+                                        .put("note", memo)
+                                        .put("confirmedExternalFunding", true)
+                                    executor.execute {
+                                        try {
+                                            request("POST", "/api/admin/platform-reserve/topup", buttonPayload.toString(), cookie)
+                                            runOnUiThread {
+                                                android.widget.Toast.makeText(this, "تم تسجيل التمويل وتحديث بيانات الاحتياطي", android.widget.Toast.LENGTH_LONG).show()
+                                                loadAdmin(cookie)
+                                            }
+                                        } catch (e: Exception) {
+                                            runOnUiThread { android.widget.Toast.makeText(this, e.message ?: "تعذر تسجيل التمويل", android.widget.Toast.LENGTH_LONG).show() }
+                                        }
+                                    }
+                                }.show()
+                        }
+                    }.show()
+            }.show()
     }
 
     private fun confirmFinanceReview(cookie: String, endpoint: String, requestId: String, decision: String) {
