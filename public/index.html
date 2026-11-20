@@ -72,8 +72,21 @@
         <p class="muted">المحافظ</p>
         <div class="grid" id="userWallets">
           <article class="card"><h2>الليرة</h2><div class="balance" id="sypBalance">0</div></article>
-          <article class="card hidden"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
+          <article class="card"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
         </div>
+        <section class="subpanel wallet-exchange">
+          <h3>تحويل بين الأرصدة</h3>
+          <p class="muted">حوّل بين الدولار والليرة حسب سعر الصرف الذي يحدده المدير. تتم الحركة فوراً ويُسجّل طرفا التحويل في سجل المحفظة.</p>
+          <form id="walletExchangeForm">
+            <label for="exchangeDirection">اتجاه التحويل</label>
+            <select id="exchangeDirection"><option value="USD_TO_SYP">من الدولار إلى الليرة</option><option value="SYP_TO_USD">من الليرة إلى الدولار</option></select>
+            <label for="exchangeAmount">المبلغ المراد تحويله</label>
+            <input id="exchangeAmount" type="number" min="0.01" step="0.01" required placeholder="أدخل المبلغ">
+            <div id="exchangePreview" class="muted">أدخل المبلغ لمعاينة الناتج.</div>
+            <div class="form-actions"><button class="primary" type="submit">تأكيد التحويل</button></div>
+          </form>
+          <div id="walletExchangeMessage" class="message" role="status"></div>
+        </section>
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
         </section>
         <section id="page-profile" class="app-page">
@@ -127,9 +140,9 @@
             <h3>التحويل واستلام الأموال</h3>
             <div class="notice">رقم عضويتك داخل SYR TRADER: <strong id="walletMemberCode">—</strong>. استخدمه لاستلام التحويلات من الأعضاء الآخرين.</div>
             <h3 style="margin-top:22px">إيداع عبر Binance</h3>
-            <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أدخل القيمة التي تريد إضافتها إلى رصيدك بالليرة وأرفق صورة إثبات العملية. المدير يطابق الحوالة ويحدد اعتماد المبلغ بالليرة. سيبقى طلب الإيداع قيد المراجعة ولن يضاف الرصيد إلا بعد أن يتحقق المدير من وصول الحوالة ويوافق عليها.</p>
+            <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أدخل مبلغ الإيداع بالدولار وأرفق صورة إثبات العملية. بعد تحقق المدير من وصول الحوالة وموافقته، يُضاف المبلغ إلى محفظة الدولار.</p>
             <form id="depositForm">
-              <label for="depositAmount">مبلغ الإيداع بالليرة</label><input id="depositAmount" type="number" min="1" step="1" required>
+              <label for="depositAmount">مبلغ الإيداع بالدولار</label><input id="depositAmount" type="number" min="0.01" step="0.01" required>
               <label for="depositProof">صورة إثبات التحويل (JPG / PNG / WEBP، حتى 850 كيلوبايت)</label><input id="depositProof" type="file" accept="image/jpeg,image/png,image/webp" required>
               <div class="form-actions"><button class="primary" type="submit">إرسال طلب الإيداع</button></div>
             </form>
@@ -215,6 +228,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   let mode = "login";
+  let currentWalletRate = 0;
   const message = (target, text, kind = "") => {
     target.textContent = text;
     target.className = "message" + (kind ? " " + kind : "");
@@ -241,6 +255,7 @@
     $("accountRole").textContent = data.user.role === "admin" ? "مدير" : "مستخدم";
     $("memberCodeValue").textContent = data.memberCode || "—";
     $("walletMemberCode").textContent = data.memberCode || "—";
+    currentWalletRate = Number(data.exchangeRate?.rate || 0);
     const wallets = data.wallets || [];
     const syp = wallets.find((w) => w.symbol === "SYP");
     const usd = wallets.find((w) => w.symbol === "USD");
@@ -295,7 +310,7 @@
       for(const [heading,items,label] of groups){
         const title=document.createElement("h4");title.textContent=heading;container.appendChild(title);
         if(!items.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="لا يوجد سجل.";container.appendChild(empty);continue;}
-        items.forEach(item=>{count++;const amount=Number(item.amount).toLocaleString("en-US")+" ليرة";let detail=label(item)+" · "+amount;
+        items.forEach(item=>{count++;const isUsd=item.assetSymbol==="USD";const amount=(Number(item.amount)/(isUsd?100:1)).toLocaleString("en-US",{minimumFractionDigits:isUsd?2:0,maximumFractionDigits:2})+(isUsd?" دولار":" ليرة");let detail=label(item)+" · "+amount;
           if(item.status)detail+=" · "+statusText(item.status);
           if(item.otherName)detail+=" · "+item.otherName+" ("+item.otherCode+")";
           addTextRow(container,detail,new Date(item.createdAt).toLocaleString("ar"));
@@ -314,7 +329,7 @@
         items.forEach(item=>{
           const row=document.createElement("div");row.className="admin-wallet-row";
           const info=document.createElement("div"),name=document.createElement("strong"),detail=document.createElement("div");
-          name.textContent=item.displayName+" · "+item.amount.toLocaleString("en-US")+" ليرة";
+          const isUsd=item.assetSymbol==="USD";name.textContent=item.displayName+" · "+(Number(item.amount)/(isUsd?100:1)).toLocaleString("en-US",{minimumFractionDigits:isUsd?2:0,maximumFractionDigits:2})+(isUsd?" دولار":" ليرة");
           detail.className="muted";detail.textContent="ID: "+item.memberCode+" · "+item.email+" · "+statusText(item.status)+(item.payoutDetails?" · "+item.payoutDetails:"");
           info.append(name,detail);row.appendChild(info);
           if(type==="deposit"){
@@ -572,6 +587,32 @@
     } finally {
       button.disabled = false;
     }
+  });
+  const updateExchangePreview = () => {
+    const amount=Number($("exchangeAmount").value),direction=$("exchangeDirection").value;
+    if(!Number.isFinite(amount)||amount<=0){$("exchangePreview").textContent="أدخل المبلغ لمعاينة الناتج.";return;}
+    if(!(currentWalletRate>0)){$("exchangePreview").textContent="بانتظار تحديد سعر الصرف من الإدارة.";return;}
+    const result=direction==="USD_TO_SYP"?amount*currentWalletRate:amount/currentWalletRate;
+    $("exchangePreview").textContent="الناتج التقريبي: "+result.toLocaleString("en-US",{minimumFractionDigits:direction==="USD_TO_SYP"?0:2,maximumFractionDigits:2})+(direction==="USD_TO_SYP"?" ليرة":" دولار")+" · السعر: 1 دولار = "+currentWalletRate.toLocaleString("en-US")+" ليرة";
+  };
+  $("exchangeAmount").addEventListener("input",updateExchangePreview);
+  $("exchangeDirection").addEventListener("change",()=>{
+    const usd=$("exchangeDirection").value==="USD_TO_SYP";
+    $("exchangeAmount").step=usd?"0.01":"1";$("exchangeAmount").min=usd?"0.01":"1";
+    updateExchangePreview();
+  });
+  $("walletExchangeForm").addEventListener("submit",async event=>{
+    event.preventDefault();const button=$("walletExchangeForm").querySelector("button[type=submit]");button.disabled=true;
+    message($("walletExchangeMessage"),"جارٍ تنفيذ التحويل...");
+    try{
+      const result=await api("/api/wallet/exchange",{method:"POST",body:JSON.stringify({direction:$("exchangeDirection").value,amount:Number($("exchangeAmount").value)})});
+      const received=result.targetSymbol==="USD"?(Number(result.targetMinor)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" دولار":Number(result.targetMinor).toLocaleString("en-US")+" ليرة";
+      $("exchangeAmount").value="";
+      const refreshed=await api("/api/auth/me",{headers:{}});showAccount(refreshed);
+      message($("walletExchangeMessage"),"تم التحويل بنجاح. أُضيف إلى رصيدك: "+received,"success");
+      await loadLedger();
+    }catch(error){message($("walletExchangeMessage"),error.message,"error");}
+    finally{button.disabled=false;}
   });
   $("targetWallet").addEventListener("change", () => {
     const usd = $("targetWallet").selectedOptions[0]?.dataset.symbol === "USD";
