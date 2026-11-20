@@ -222,6 +222,29 @@ const walletApi = async (request, env, url) => {
       positions:positions.results||[],orders:orders.results||[]});
   }
 
+  if (url.pathname === "/api/admin/market-instruments" && request.method === "GET") {
+    if (user.role !== "admin") return json({ok:false,error:"غير مصرح"},403);
+    const rows=await env.DB.prepare(`SELECT i.id,i.symbol,i.name,i.is_active AS isActive,
+      p.price_micro AS priceMicro,p.updated_at AS updatedAt
+      FROM market_instruments i LEFT JOIN market_prices p ON p.instrument_id=i.id
+      ORDER BY i.symbol`).all();
+    return json({ok:true,instruments:rows.results||[]});
+  }
+
+  if (url.pathname === "/api/admin/market-instrument-status" && request.method === "POST") {
+    if (user.role !== "admin") return json({ok:false,error:"غير مصرح"},403);
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body; try { body=await readJson(request); } catch { return json({ok:false,error:"بيانات الطلب غير صحيحة"},400); }
+    const instrumentId=String(body.instrumentId||"");
+    const isActive=body.isActive;
+    if(!instrumentId||instrumentId.length>80||typeof isActive!=="boolean")
+      return json({ok:false,error:"بيانات الأداة غير صحيحة"},400);
+    const result=await env.DB.prepare("UPDATE market_instruments SET is_active=? WHERE id=?")
+      .bind(isActive?1:0,instrumentId).run();
+    if(!result.meta?.changes)return json({ok:false,error:"الأداة غير موجودة"},404);
+    return json({ok:true,instrumentId,isActive});
+  }
+
   if (url.pathname === "/api/admin/market-instrument" && request.method === "POST") {
     if (user.role !== "admin") return json({ok:false,error:"غير مصرح"},403);
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
