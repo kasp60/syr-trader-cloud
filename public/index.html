@@ -76,6 +76,28 @@
     .performance-feed{display:grid;gap:8px;margin-top:12px}
     .performance-feed .ledger-row{background:#111820;border:1px solid #2b3139;border-radius:8px;padding:10px}
     @media(max-width:760px){.performance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.performance-card strong{font-size:16px}}
+
+    :root{--bg:#080f1c;--panel:#101b2b;--card:#142238;--line:rgba(255,255,255,.08);--text:#edf4ff;--muted:#9aabc1;--accent:#28d9b0}
+    body{background:radial-gradient(ellipse at 15% -15%,#18304b 0,transparent 42%),linear-gradient(145deg,#080f1c,#0b1422 55%,#0a1727);color:var(--text)}
+    header{background:rgba(8,15,28,.82);backdrop-filter:blur(16px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+    .status{display:inline-flex;align-items:center;gap:8px;background:rgba(40,217,176,.09);border:1px solid rgba(40,217,176,.2);border-radius:30px;padding:6px 11px;color:#72f2d2;font-size:12px}
+    .status:before{content:"";width:7px;height:7px;border-radius:50%;background:#2be0a9;box-shadow:0 0 9px #2be0a9,0 0 17px rgba(43,224,169,.6)}
+    .intro{color:#b7c6d9;font-size:14px;margin-top:-8px}
+    #accountPanel{background:rgba(13,24,40,.78);border:1px solid var(--line);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.22);backdrop-filter:blur(14px)}
+    #accountPanel>h2{font-size:21px;margin:0 0 12px}
+    .app-nav{display:flex;flex-wrap:nowrap;gap:5px;margin:16px 0 22px;padding:6px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:13px;overflow-x:auto;scrollbar-width:none}
+    .app-nav::-webkit-scrollbar{display:none}.app-nav button{flex:1 0 auto;min-width:0;padding:10px 12px;border:0;background:transparent;color:#aebed2;font-size:13px;white-space:nowrap;border-radius:9px}
+    .app-nav button[aria-current=page]{background:linear-gradient(135deg,#1eaa91,#27d9b0);color:#06251f;box-shadow:0 4px 16px rgba(39,217,176,.16)}
+    .account-hero{background:linear-gradient(125deg,rgba(25,65,91,.88),rgba(16,34,56,.92) 65%,rgba(20,55,64,.8));border:1px solid var(--line);border-radius:17px;padding:19px;margin:8px 0 18px;box-shadow:inset 0 1px rgba(255,255,255,.04)}
+    .account-hero-label{font-size:12px;color:#b7c9dd}.account-total{font-size:clamp(27px,5vw,38px);font-weight:850;letter-spacing:-.7px;margin:8px 0;color:#f4fbff;font-variant-numeric:tabular-nums}
+    .account-change{font-size:12px;color:#a8b9ce}.account-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:15px}.account-actions button{min-width:105px;padding:10px 16px}
+    .account-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0 18px}
+    .account-meta-item{min-width:0;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:11px;padding:11px 12px}
+    .account-meta-item span{display:block;color:#94a8c1;font-size:11px;margin-bottom:5px}.account-meta-item strong{font-size:13px;overflow-wrap:anywhere}
+    .role-badge{display:inline-flex!important;width:max-content;padding:4px 9px;border-radius:20px;background:rgba(40,217,176,.13);color:#6df0cf!important;border:1px solid rgba(40,217,176,.25);font-size:11px!important}
+    .card,.subpanel,.performance-card{background:rgba(18,32,51,.78);border-color:var(--line);border-radius:14px}
+    .notice{background:rgba(40,217,176,.08);border-color:rgba(40,217,176,.65);color:#d9fff4}
+    @media(max-width:760px){main{margin-top:18px;padding-inline:12px}#accountPanel{padding:13px}.app-nav{position:sticky;top:64px;z-index:12}.app-nav button{padding:10px 9px;font-size:12px}.account-hero{padding:16px}.account-meta{gap:7px}.account-meta-item{padding:9px}.account-actions button{flex:1}.intro{line-height:1.8}}
   </style>
 </head>
 <body>
@@ -101,11 +123,14 @@
       </section>
       <section class="panel hidden" id="accountPanel">
         <h2>ملخص الحساب</h2>
-        <nav class="app-nav" aria-label="التنقل الرئيسي"><button type="button" data-app-page="dashboard" aria-current="page">الرئيسية</button><button type="button" data-app-page="trading">التداول</button><button type="button" data-app-page="wallet">المحفظة</button><button type="button" data-app-page="admin" hidden>الإدارة</button><button type="button" data-app-page="profile">حسابي</button></nav>
+        <nav class="app-nav" aria-label="التنقل الرئيسي"><button type="button" data-app-page="dashboard" aria-current="page">⌂ الرئيسية</button><button type="button" data-app-page="trading">⌁ التداول</button><button type="button" data-app-page="wallet">▣ المحفظة</button><button type="button" data-app-page="profile">♙ حسابي</button><button type="button" data-app-page="admin" hidden>⚙ الإدارة</button></nav>
         <section id="page-dashboard" class="app-page active">
-        <div class="account-line"><span>الاسم</span><strong id="accountName">—</strong></div>
-        <div class="account-line"><span>البريد</span><strong id="accountEmail">—</strong></div>
-        <div class="account-line"><span>نوع الحساب</span><strong id="accountRole">مستخدم</strong></div><div class="account-line"><span>رقم العضوية</span><strong id="memberCodeValue">—</strong></div>
+        <section class="account-hero">
+          <div class="account-hero-label">إجمالي قيمة المحفظة التقديرية</div><div class="account-total" id="totalPortfolioValue">— ليرة</div>
+          <div class="account-change" id="dailyPortfolioChange">التغير اليومي: غير متاح حالياً</div>
+          <div class="account-actions"><button type="button" class="primary" id="quickDeposit">إيداع</button><button type="button" id="quickWithdraw">سحب</button><button type="button" id="quickTrade">ابدأ التداول</button></div>
+        </section>
+        <div class="account-meta"><div class="account-meta-item"><span>الاسم</span><strong id="accountName">—</strong></div><div class="account-meta-item"><span>البريد الإلكتروني</span><strong id="accountEmail">—</strong></div><div class="account-meta-item"><span>نوع الحساب</span><strong id="accountRole" class="role-badge">مستخدم</strong></div><div class="account-meta-item"><span>رقم العضوية</span><strong id="memberCodeValue">—</strong></div></div>
         <p class="muted">المحافظ</p>
         <div class="grid" id="userWallets">
           <article class="card"><h2>الليرة</h2><div class="balance" id="sypBalance">0</div></article>
@@ -310,6 +335,9 @@
     $("accountEmail").textContent = data.user.email;
     $("accountRole").textContent = data.user.role === "admin" ? "مدير" : "مستخدم";
     $("memberCodeValue").textContent = data.memberCode || "—";
+    const totalSyp=Number(syp?.balanceMinor||0)+((Number(usd?.balanceMinor||0)/100)*Number(data.exchangeRate?.rate||0));
+    $("totalPortfolioValue").textContent=totalSyp.toLocaleString("en-US",{maximumFractionDigits:0})+" ليرة";
+    $("dailyPortfolioChange").textContent="التغير اليومي: غير متاح حالياً";
     $("walletMemberCode").textContent = data.memberCode || "—";
     currentWalletRate = Number(data.exchangeRate?.rate || 0);
     const wallets = data.wallets || [];
@@ -707,6 +735,9 @@
     }catch(error){$("chartUpdated").textContent=error.message;}
   };
   document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet"){loadLedger();loadFinanceRequests();}if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();loadAdminFinanceRequests();}}));
+  $("quickDeposit")?.addEventListener("click",()=>{document.querySelector('[data-app-page="wallet"]').click();$("depositAmount")?.focus();});
+  $("quickWithdraw")?.addEventListener("click",()=>{document.querySelector('[data-app-page="wallet"]').click();$("withdrawAmount")?.focus();});
+  $("quickTrade")?.addEventListener("click",()=>document.querySelector('[data-app-page="trading"]').click());
   document.querySelectorAll("[data-trade-tab]").forEach(button=>button.addEventListener("click",()=>{const v=button.dataset.tradeTab;document.querySelectorAll("[data-trade-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));$("tradeTerminalView").classList.toggle("active",v==="terminal");$("tradePositionsView").classList.toggle("active",v==="positions");}));
   document.querySelectorAll("[data-chart-range]").forEach(button=>button.addEventListener("click",()=>{chartRangeMs=({"1m":60000,"5m":300000,"15m":900000,"1h":3600000,"1d":86400000})[button.dataset.chartRange]||60000;document.querySelectorAll("[data-chart-range]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));drawMarketChart(latestChartPoints);}));
   document.querySelectorAll("[data-chart-count]").forEach(button=>button.addEventListener("click",()=>{chartVisibleCount=Number(button.dataset.chartCount)||60;document.querySelectorAll("[data-chart-count]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));drawMarketChart(latestChartPoints);}));
@@ -933,8 +964,8 @@
   });
   setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},15000);
   api("/api/health", { headers: {} })
-    .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "الخادم وقاعدة البيانات متصلان" : "الخادم متصل"; })
-    .catch(() => { $("serverStatus").textContent = "تعذر الاتصال"; });
+    .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "متصل" : "الخادم متصل"; })
+    .catch(() => { $("serverStatus").textContent = "غير متصل"; });
   api("/api/auth/me", { headers: {} })
     .then(showAccount)
     .catch(() => showAuth());
