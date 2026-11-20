@@ -219,6 +219,13 @@
         </section>
         <section id="page-admin" class="app-page">
         <section id="adminPanel" class="subpanel hidden">
+          <h3>نظرة عامة</h3>
+          <div class="performance-grid">
+            <div class="performance-card"><span>طلبات إيداع معلّقة</span><strong id="adminPendingDeposits">—</strong></div>
+            <div class="performance-card"><span>طلبات سحب معلّقة</span><strong id="adminPendingWithdrawals">—</strong></div>
+            <div class="performance-card"><span>إجمالي المستخدمين</span><strong id="adminUsersCount">—</strong></div>
+            <div class="performance-card"><span>حالة محرك السوق</span><strong style="color:#0ecb81">يعمل دائماً</strong></div>
+          </div>
           <h3 style="margin-top:22px">طلبات الإيداع والسحب</h3><p class="muted">تحقق من وصول حوالة Binance قبل قبول الإيداع. وفي طلب السحب، نفّذ التحويل خارج المنصة أولاً ثم اضغط قبول؛ الرفض يعيد المبلغ تلقائياً للعضو.</p><div id="adminFinanceRequests" class="muted">جارٍ تحميل الطلبات...</div>
           <h3>إدارة المستخدمين</h3>
           <p class="muted">يمكنك تفعيل الحسابات الموقوفة أو إيقاف حساب مستخدم. لا يمكن إيقاف حسابك الحالي أو آخر مدير نشط.</p>
@@ -372,6 +379,9 @@
     const container=$("adminFinanceRequests");if(!container)return;container.replaceChildren();
     try{
       const data=await api("/api/admin/finance-requests",{headers:{}});
+      const pendingCount=items=>Array.isArray(items)?items.filter(x=>x.status==="pending").length:0;
+      if($("adminPendingDeposits"))$("adminPendingDeposits").textContent=String(pendingCount(data.deposits));
+      if($("adminPendingWithdrawals"))$("adminPendingWithdrawals").textContent=String(pendingCount(data.withdrawals));
       const render=(heading,items,type)=>{
         const title=document.createElement("h4");title.textContent=heading;container.appendChild(title);
         if(!items.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="لا توجد طلبات.";container.appendChild(empty);return;}
@@ -411,6 +421,7 @@
     container.replaceChildren();
     try {
       const data = await api("/api/admin/users", { headers: {} });
+      if($("adminUsersCount"))$("adminUsersCount").textContent=String((data.users||[]).length);
       if (!data.users.length) { container.textContent = "لا يوجد مستخدمون."; return; }
       data.users.forEach((account) => {
         const row = document.createElement("div");
