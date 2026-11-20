@@ -40,6 +40,34 @@
     .trade-tabs button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.trade-view{display:none}.trade-view.active{display:block}
     .bot-pill{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:5px 9px;color:var(--muted)}.bot-pill.running{color:var(--accent);border-color:var(--accent)}
     @media(max-width:760px){.trade-grid{grid-template-columns:1fr}.chart-panel{padding:8px}.chart-panel svg{min-height:390px}.chart-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-stats strong{font-size:15px}.chart-indicators{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+    /* Binance-inspired trading terminal proportions and chart surface */
+    main{max-width:1680px;width:100%;padding-inline:clamp(12px,2vw,30px)}
+    #accountPanel{width:100%;padding:clamp(14px,1.8vw,28px)}
+    #page-trading{width:100%}
+    .trade-workspace{width:100%;margin-top:14px}
+    .chart-panel{width:100%;background:#0b0e11;border:1px solid #2b3139;border-radius:8px;padding:12px;box-shadow:none}
+    .chart-panel>div:first-child{color:#848e9c}
+    .chart-panel svg{width:100%;height:auto;min-height:650px;max-height:none;display:block;background:#0b0e11}
+    .chart-controls{gap:6px;margin:12px 0;padding:8px 0;border-bottom:1px solid #2b3139}
+    .chart-controls button{background:#181d25;border:1px solid #343b46;border-radius:5px;padding:7px 11px;color:#c5cbd3}
+    .chart-controls button[aria-pressed="true"]{background:#f0b90b;color:#111;border-color:#f0b90b}
+    .chart-stats>div,.chart-indicators>div{background:#111820;border:1px solid #2b3139;border-radius:6px}
+    .chart-stats strong,.chart-indicators strong{color:#eaecef}
+    .chart-legend{color:#aeb6c2}
+    .chart-footnote{color:#848e9c}
+    .trade-toolbar{padding:8px 0;border-bottom:1px solid #2b3139}
+    .trade-toolbar strong{font-size:18px;color:#eaecef}
+    .trade-toolbar .bot-pill{border-color:#3b4654;color:#c5cbd3}
+    .trade-toolbar .bot-pill.running{color:#0ecb81;border-color:#0ecb81}
+    @media(max-width:760px){
+      main{padding-inline:8px}
+      #accountPanel{padding:10px}
+      .chart-panel{padding:5px}
+      .chart-panel svg{min-height:430px}
+      .chart-controls{gap:5px}
+      .chart-controls button{padding:7px 9px;font-size:12px}
+    }
   </style>
 </head>
 <body>
