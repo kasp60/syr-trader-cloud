@@ -121,6 +121,19 @@ const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
 
+  if (url.pathname === "/api/admin/wallets" && request.method === "GET") {
+    if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+    const rows = await env.DB.prepare(
+      `SELECT w.id AS walletId, u.email, u.display_name AS displayName,
+              a.name AS assetName, w.balance_minor AS balanceMinor
+       FROM wallets w
+       JOIN users u ON u.id = w.user_id
+       JOIN assets a ON a.id = w.asset_id
+       ORDER BY u.created_at DESC LIMIT 500`
+    ).all();
+    return json({ ok: true, wallets: rows.results || [] });
+  }
+
   if (url.pathname === "/api/wallet/ledger" && request.method === "GET") {
     const rows = await env.DB.prepare(
       `SELECT le.id, le.entry_type AS type, le.amount_minor AS amountMinor,
