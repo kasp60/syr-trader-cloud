@@ -621,9 +621,9 @@ class MainActivity : Activity() {
                         return count
                     }
                     val stats = listOf(
-                        "عدد الحسابات: \${userRows?.length() ?: 0}",
-                        "طلبات الإيداع المعلقة: \${pendingCount(depositRows)}",
-                        "طلبات السحب المعلقة: \${pendingCount(withdrawalRows)}"
+                        "عدد الحسابات: ${userRows?.length() ?: 0}",
+                        "طلبات الإيداع المعلقة: ${pendingCount(depositRows)}",
+                        "طلبات السحب المعلقة: ${pendingCount(withdrawalRows)}"
                     )
                     stats.forEach { value ->
                         val line = text(value, 15, Color.WHITE, true)
@@ -645,7 +645,7 @@ class MainActivity : Activity() {
                         val symbol = item.optString("assetSymbol")
                         val available = item.optLong("availableMinor") / 100.0
                         val reserved = item.optLong("reservedMinor") / 100.0
-                        val line = text("$symbol • المتاح: \${String.format("%.2f", available)} • المحجوز: \${String.format("%.2f", reserved)}", 13, Color.WHITE)
+                        val line = text("$symbol • المتاح: ${String.format("%.2f", available)} • المحجوز: ${String.format("%.2f", reserved)}", 13, Color.WHITE)
                         line.gravity = Gravity.RIGHT
                         line.setPadding(0, dp(8), 0, dp(4))
                         content.addView(line, match())
@@ -659,7 +659,7 @@ class MainActivity : Activity() {
                         for (i in 0 until minOf(rows.length(), 15)) {
                             val item = rows.optJSONObject(i) ?: continue
                             val amount = item.optLong("amount") / 100.0
-                            val line = text("$label • \${item.optString("displayName")} • \${String.format("%.2f", amount)} • \${item.optString("status")}", 12, Color.WHITE)
+                            val line = text("$label • ${item.optString("displayName")} • ${String.format("%.2f", amount)} • ${item.optString("status")}", 12, Color.WHITE)
                             line.gravity = Gravity.RIGHT
                             line.setPadding(0, dp(7), 0, dp(4))
                             content.addView(line, match())
