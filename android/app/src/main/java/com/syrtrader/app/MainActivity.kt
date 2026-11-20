@@ -302,10 +302,31 @@ class MainActivity : Activity() {
         content.addView(loading, match())
         executor.execute {
             try {
+                val profile = request("GET", "/api/auth/me", null, cookie)
                 val data = request("GET", "/api/wallet/ledger", null, cookie)
                 val finance = request("GET", "/api/wallet/finance-requests", null, cookie)
                 runOnUiThread {
                     content.removeAllViews()
+                    val balancesCard = card()
+                    content.addView(balancesCard, match())
+                    val balancesTitle = text("أرصدة المحفظة", 19, teal, true)
+                    balancesTitle.gravity = Gravity.RIGHT
+                    balancesCard.addView(balancesTitle, match())
+                    val wallets = profile.optJSONArray("wallets")
+                    if (wallets == null || wallets.length() == 0) {
+                        val empty = text("لا توجد أرصدة متاحة", 13, muted)
+                        empty.gravity = Gravity.RIGHT
+                        balancesCard.addView(empty, match())
+                    } else for (i in 0 until wallets.length()) {
+                        val wallet = wallets.optJSONObject(i) ?: continue
+                        val symbol = wallet.optString("symbol")
+                        val minor = wallet.optLong("balanceMinor")
+                        val value = if (symbol == "USD") String.format("%.2f", minor / 100.0) else String.format("%,d", minor / 100)
+                        val line = text("${wallet.optString("assetName")} • $value $symbol", 16, Color.WHITE, true)
+                        line.gravity = Gravity.RIGHT
+                        line.setPadding(0, dp(12), 0, dp(6))
+                        balancesCard.addView(line, match())
+                    }
                     val walletCard = card()
                     content.addView(walletCard, match())
                     val title = text("سجل المحفظة", 19, teal, true)
