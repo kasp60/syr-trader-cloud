@@ -9,7 +9,7 @@ const json = (data, status = 200, headers = {}) =>
     }
   });
 
-const PBKDF2_ITERATIONS = 210000;
+const PBKDF2_ITERATIONS = 100000;
 const SESSION_DAYS = 7;
 const COOKIE_NAME = "syr_session";
 
@@ -51,7 +51,7 @@ const verifyPassword = async (password, stored) => {
   const [algorithm, iterationsText, saltText, expectedText] = String(stored).split("$");
   if (algorithm !== "pbkdf2" || !iterationsText || !saltText || !expectedText) return false;
   const iterations = Number(iterationsText);
-  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) return false;
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 100000) return false;
   const actual = await passwordHashWithParams(password, fromBase64url(saltText), iterations);
   const actualBytes = fromBase64url(actual.split("$")[3]);
   const expectedBytes = fromBase64url(expectedText);
