@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import com.google.android.material.button.MaterialButton
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
@@ -1298,12 +1299,16 @@ class MainActivity : Activity() {
             else android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
     }
 
-    private fun actionButton(label: String) = Button(this).apply {
+    private fun actionButton(label: String) = MaterialButton(this).apply {
         text = label
         isAllCaps = false
-        textSize = 16f
+        textSize = 15f
         setTextColor(navy)
-        setBackgroundColor(teal)
+        cornerRadius = dp(12)
+        insetTop = 0
+        insetBottom = 0
+        backgroundTintList = android.content.res.ColorStateList.valueOf(teal)
+        rippleColor = android.content.res.ColorStateList.valueOf(Color.argb(28, 8, 15, 28))
     }
 
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
