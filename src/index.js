@@ -578,9 +578,10 @@ const walletApi = async (request, env, url) => {
     if(!requireSameOrigin(request,url))return json({ok:false,error:"طلب غير موثوق"},403);
     if(Number(request.headers.get("content-length")||0)>1200000)return json({ok:false,error:"حجم الطلب أكبر من المسموح"},413);
     let form;try{form=await request.formData();}catch{return json({ok:false,error:"تعذر قراءة بيانات الإيداع"},400);}
-    const amount=Number(form.get("amount")),file=form.get("proof");
+    const amountText=String(form.get("amount")||"");
+    const amount=Number(amountText),file=form.get("proof");
     const amountMinor=Math.round(amount*100);
-    if(!Number.isFinite(amount)||amount<=0||amount>10000000||!Number.isSafeInteger(amountMinor)||amountMinor<=0)return json({ok:false,error:"أدخل مبلغاً صحيحاً بالدولار"},400);
+    if(!/^\d+(\.\d{1,2})?$/.test(amountText)||!Number.isFinite(amount)||amount<=0||amount>10000000||!Number.isSafeInteger(amountMinor)||amountMinor<=0)return json({ok:false,error:"أدخل مبلغاً صحيحاً بالدولار حتى منزلتين عشريتين"},400);
     if(!file||typeof file.arrayBuffer!=="function"||file.size<1||file.size>850000)return json({ok:false,error:"أرفق صورة بحجم لا يتجاوز 850 كيلوبايت"},400);
     const mime=String(file.type||"").toLowerCase();
     if(!["image/jpeg","image/png","image/webp"].includes(mime))return json({ok:false,error:"الصورة يجب أن تكون JPG أو PNG أو WEBP"},400);
@@ -619,7 +620,7 @@ const walletApi = async (request, env, url) => {
     }
     const sourceSymbol=direction==="USD_TO_SYP"?"USD":"SYP";
     const targetSymbol=direction==="USD_TO_SYP"?"SYP":"USD";
-    if((sourceSymbol==="SYP"&&!Number.isSafeInteger(amount))||(sourceSymbol==="USD"&&Math.round(amount*100)!==amount*100)){
+    if((sourceSymbol==="SYP"&&!Number.isSafeInteger(amount))||(sourceSymbol==="USD"&&Math.abs(amount*100-Math.round(amount*100))>1e-8)){
       return json({ok:false,error:"مبلغ الدولار يجب أن يحتوي منزلتين عشريتين كحد أقصى، والليرة أعداد صحيحة"},400);
     }
     const sourceMinor=sourceSymbol==="USD"?Math.round(amount*100):amount;
