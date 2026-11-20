@@ -96,6 +96,7 @@ const createSession = async (db, userId) => {
   const token = randomToken();
   const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
+  await db.prepare("DELETE FROM sessions WHERE user_id=? AND expires_at<=?").bind(userId,new Date().toISOString()).run();
   await db.prepare(
     "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)"
   ).bind(crypto.randomUUID(), userId, tokenHash, expiresAt).run();
@@ -574,6 +575,7 @@ const authApi = async (request, env, url) => {
       login_key TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0,
       window_started_at INTEGER NOT NULL, blocked_until INTEGER
     )`).run();
+    await env.DB.prepare("DELETE FROM auth_login_limits WHERE window_started_at<? AND COALESCE(blocked_until,0)<?").bind(nowSeconds-172800,nowSeconds).run();
     const limit = await env.DB.prepare(`INSERT INTO auth_login_limits
       (login_key,attempts,window_started_at,blocked_until) VALUES (?,1,?,NULL)
       ON CONFLICT(login_key) DO UPDATE SET
@@ -602,6 +604,19 @@ const authApi = async (request, env, url) => {
       200,
       { "set-cookie": sessionCookie(token, SESSION_DAYS * 86400) }
     );
+  }
+
+  if (url.pathname === "/api/auth/logout-others" && request.method === "POST") {
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+    const user = await currentUser(request, env.DB);
+    if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+    const token = getCookie(request, COOKIE_NAME);
+    if (!token || token.length > 128) return json({ ok: false, error: "الجلسة غير صالحة" }, 401);
+    const tokenHash = await sha256(token);
+    const result = await env.DB.prepare(
+      "DELETE FROM sessions WHERE user_id=? AND token_hash<>?"
+    ).bind(user.id, tokenHash).run();
+    return json({ ok: true, revoked: Number(result.meta?.changes || 0) });
   }
 
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
