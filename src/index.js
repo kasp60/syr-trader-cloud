@@ -168,6 +168,18 @@ const ensurePaperSchema = async (db) => {
       opened_at TEXT NOT NULL, closed_at TEXT, exit_price_micro INTEGER, pnl_cents INTEGER
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_trades_user_status ON paper_trades(user_id,status,opened_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS paper_limit_orders (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
+      direction TEXT NOT NULL CHECK(direction IN ('long','short')),
+      margin_minor INTEGER NOT NULL CHECK(margin_minor>0),
+      margin_asset_symbol TEXT NOT NULL CHECK(margin_asset_symbol IN ('SYP','USD')),
+      leverage INTEGER NOT NULL CHECK(leverage BETWEEN 1 AND 20),
+      limit_price_micro INTEGER NOT NULL CHECK(limit_price_micro>0),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','filled','cancelled')),
+      trade_id TEXT, created_at TEXT NOT NULL, filled_at TEXT, cancelled_at TEXT
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_limit_orders_user_status ON paper_limit_orders(user_id,status,created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS paper_ledger (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       order_id TEXT NOT NULL UNIQUE REFERENCES paper_orders(id) ON DELETE RESTRICT,
@@ -283,8 +295,32 @@ const runScheduledMarketBots = async (db) => {
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0)changed++;
   }
+  await processPendingLimitOrders(db);
   await settleLiquidatedTrades(db);
   return {checked:(result.results||[]).length,changed};
+};
+
+
+const processPendingLimitOrders = async (db) => {
+  const pending = await db.prepare("SELECT o.id,o.user_id AS userId,o.instrument_id AS instrumentId,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,p.price_micro AS currentPriceMicro FROM paper_limit_orders o JOIN market_prices p ON p.instrument_id=o.instrument_id WHERE o.status='pending'").all();
+  let filled = 0;
+  for (const order of (pending.results || [])) {
+    const current = BigInt(order.currentPriceMicro), limit = BigInt(order.limitPriceMicro);
+    const triggered = order.direction === "long" ? current <= limit : current >= limit;
+    if (!triggered) continue;
+    const entry = current, leverage = BigInt(order.leverage), margin = BigInt(order.marginMinor);
+    const quantity = order.direction === "long" ? (margin * leverage * 1000000000000n + entry / 2n) / entry : margin * leverage * 10000n;
+    if (quantity <= 0n || quantity > 9007199254740991n) continue;
+    const liquidation = order.direction === "long" ? (entry * BigInt(order.leverage - 1) / leverage) || 1n : entry * BigInt(order.leverage + 1) / leverage;
+    const tradeId = crypto.randomUUID(), now = new Date().toISOString();
+    const result = await db.batch([
+      db.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?,'open',? FROM paper_limit_orders o WHERE o.id=? AND o.status='pending' AND ((o.direction='long' AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro<=o.limit_price_micro)) OR (o.direction='short' AND EXISTS(SELECT 1 FROM market_prices p WHERE p.instrument_id=o.instrument_id AND p.price_micro>=o.limit_price_micro)))")
+        .bind(tradeId,order.userId,order.instrumentId,order.direction,Number(quantity),Number(entry),order.leverage,Number(margin),order.marginAssetSymbol,Number(liquidation),now,order.id),
+      db.prepare("UPDATE paper_limit_orders SET status='filled',trade_id=?,filled_at=? WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(tradeId,now,order.id,tradeId)
+    ]);
+    if (Number(result?.[0]?.meta?.changes || 0) > 0 && Number(result?.[1]?.meta?.changes || 0) > 0) filled++;
+  }
+  return filled;
 };
 
 const settleLiquidatedTrades = async (db) => {
@@ -357,7 +393,7 @@ const walletApi = async (request, env, url) => {
     return json({ok:true,points:(rows.results||[]).reverse()});
   }
   if (url.pathname === "/api/market/board" && request.method === "GET") {
-    const [market, account, positions, orders] = await Promise.all([
+    const [market, account, positions, orders, limitOrders] = await Promise.all([
       env.DB.prepare(`SELECT i.id,i.symbol,i.name,i.quote_symbol AS quoteSymbol,p.price_micro AS priceMicro,p.updated_at AS updatedAt,COALESCE(b.enabled,0) AS botEnabled
         FROM market_instruments i LEFT JOIN market_prices p ON p.instrument_id=i.id LEFT JOIN market_bots b ON b.instrument_id=i.id
         WHERE i.is_active=1 AND i.symbol='USD/SYP' ORDER BY i.symbol`).all(),
@@ -368,8 +404,10 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare(`SELECT o.id,o.side,o.quantity_micro AS quantityMicro,o.price_micro AS priceMicro,
         o.total_cents AS totalCents,o.created_at AS createdAt,i.symbol
         FROM paper_orders o JOIN market_instruments i ON i.id=o.instrument_id
-        WHERE o.user_id=? AND i.symbol='USD/SYP' ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all()
+        WHERE o.user_id=? AND i.symbol='USD/SYP' ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all(),
+      env.DB.prepare("SELECT o.id,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,o.created_at AS createdAt,i.symbol FROM paper_limit_orders o JOIN market_instruments i ON i.id=o.instrument_id WHERE o.user_id=? AND o.status='pending' ORDER BY o.created_at DESC LIMIT 100").bind(user.id).all()
     ]);
+    await processPendingLimitOrders(env.DB);
     await settleLiquidatedTrades(env.DB);
     const [openTrades,closedTrades,walletRows]=await Promise.all([
       env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,
@@ -386,7 +424,7 @@ const walletApi = async (request, env, url) => {
         WHERE w.user_id=? AND a.symbol IN ('SYP','USD')`).bind(user.id).all()
     ]);
     return json({ok:true,market:market.results||[],cashCents:account?.cashCents??0,wallets:walletRows.results||[],
-      positions:positions.results||[],orders:orders.results||[],openTrades:openTrades.results||[],closedTrades:closedTrades.results||[]});
+      positions:positions.results||[],orders:orders.results||[],limitOrders:limitOrders.results||[],openTrades:openTrades.results||[],closedTrades:closedTrades.results||[]});
   }
 
   if (url.pathname === "/api/admin/market-bot" && request.method === "POST") {
