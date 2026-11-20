@@ -314,7 +314,8 @@ const walletApi = async (request, env, url) => {
         .bind(totalCents,now,user.id,totalCents),
       env.DB.prepare(`INSERT INTO paper_positions (user_id,instrument_id,quantity_micro)
         SELECT ?,?,? WHERE changes()=1
-        ON CONFLICT(user_id,instrument_id) DO UPDATE SET quantity_micro=quantity_micro+excluded.quantity_micro`)
+        ON CONFLICT(user_id,instrument_id) DO UPDATE SET quantity_micro=quantity_micro+excluded.quantity_micro
+        WHERE quantity_micro<=9007199254740991-excluded.quantity_micro`)
         .bind(user.id,instrumentId,quantityMicro),
       orderInsert
     ]:[
