@@ -371,7 +371,7 @@ const runScheduledMarketBots = async (db) => {
 
 const getReserveReferenceBounds = async (db, targetOverride = null) => {
   const row=await db.prepare("SELECT p.price_micro AS priceMicro,t.target_price_micro AS targetPriceMicro,t.from_price_micro AS fromPriceMicro,t.transition_started_at AS transitionStartedAt,t.transition_seconds AS transitionSeconds FROM market_prices p LEFT JOIN market_price_targets t ON t.instrument_id=p.instrument_id WHERE p.instrument_id='syr-usd-syp'").first();
-  const fallback=Number((await db.prepare("SELECT rate*1000000 AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||row?.priceMicro||0);
+  const fallback=Number(row?.priceMicro||(await db.prepare("SELECT CAST(ROUND(rate*1000000) AS INTEGER) AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||0);
   let current=Number(row?.targetPriceMicro||fallback);
   const started=Date.parse(String(row?.transitionStartedAt||"")),duration=Number(row?.transitionSeconds||0)*1000,elapsed=Date.now()-started;
   if(row?.fromPriceMicro&&row?.targetPriceMicro&&Number.isFinite(started)&&duration>=60000&&elapsed>=0&&elapsed<duration){
@@ -1049,9 +1049,10 @@ const walletApi = async (request, env, url) => {
       throw new Error("تعذر تسجيل تمويل الاحتياطي");
     }
     if(!result?.[0]?.meta?.changes||!result?.[1]?.meta?.changes||!result?.[2]?.meta?.changes)return json({ok:false,error:"تعذر إضافة المبلغ؛ تحقق من الرصيد أو المرجع"},409);
-    await syncPlatformReserve(env.DB);
+    let coverageSynced=true;
+    try { await syncPlatformReserve(env.DB); } catch (error) { coverageSynced=false; console.error("SYR_TRADER_RESERVE_POST_FUNDING_SYNC",String(error)); }
     const balance=await env.DB.prepare("SELECT balance_minor AS balanceMinor,reserved_minor AS reservedMinor,required_minor AS requiredMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(assetSymbol).first();
-    return json({ok:true,assetSymbol,amountMinor,balance});
+    return json({ok:true,assetSymbol,amountMinor,balance,coverageSynced});
   }
 
   if (url.pathname === "/api/admin/finance-requests" && request.method === "GET") {
