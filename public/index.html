@@ -611,9 +611,10 @@
       });
     } catch(error) { $("paperMarketList").textContent=error.message; }
   };
-  let chartRangeMs=60000,chartVisibleCount=60,latestChartPoints=[];
-  const drawMarketChart = points => {
+  let chartRangeMs=60000,chartVisibleCount=60,latestChartPoints=[],latestOpenTrades=[];
+  const drawMarketChart = (points,trades=latestOpenTrades) => {
     latestChartPoints=Array.isArray(points)?points:[];
+    latestOpenTrades=Array.isArray(trades)?trades:[];
     const svg=$("marketChart");svg.replaceChildren();const ns="http://www.w3.org/2000/svg";
     const el=(tag,attrs)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;};
     const addText=(x,y,value,anchor="end",size=13,color="#a9c4dc")=>{const t=el("text",{x,y,fill:color,"font-size":size,"text-anchor":anchor});t.textContent=value;svg.appendChild(t);};
@@ -679,6 +680,11 @@
     const moving=(period)=>candles.map((c,i)=>{if(i+1<period)return null;const slice=vals.slice(i+1-period,i+1);return slice.reduce((a,b)=>a+b,0)/period;});
     const drawLine=(series,color)=>{let d="";series.forEach((v,i)=>{if(v===null)return;const x=left+(i+.5)*slot,yy=y(v);d+=(d?" L ":"M ")+x.toFixed(2)+" "+yy.toFixed(2);});if(d)svg.appendChild(el("path",{d,fill:"none",stroke:color,"stroke-width":2.5,"stroke-linejoin":"round","stroke-linecap":"round"}));};
     const sma20=moving(20),sma50=moving(50);drawLine(sma20,"#f6c85f");drawLine(sma50,"#65aaff");
+    latestOpenTrades.slice(0,8).forEach((trade,index)=>{
+      const entry=Number(trade.entryPriceMicro)/1000000,liquidation=Number(trade.liquidationPriceMicro)/1000000;
+      if(Number.isFinite(entry)&&entry>=min&&entry<=max){const yy=y(entry);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#f6c85f","stroke-width":1.4,"stroke-dasharray":"7 5","opacity":.9}));addText(right-4,yy-5,"دخول #"+(index+1)+" "+fmt(entry),"end",10,"#f6c85f");}
+      if(Number.isFinite(liquidation)&&liquidation>=min&&liquidation<=max){const yy=y(liquidation);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#ff7185","stroke-width":1.5,"stroke-dasharray":"4 4","opacity":.95}));addText(right-4,yy+12,"تصفية #"+(index+1)+" "+fmt(liquidation),"end",10,"#ff8a9a");}
+    });
     const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.5}));addText(right,lastY-9,fmt(last)+" ليرة","end",13,"#35e3c1");
     addText(left,bottom+25,new Date(candles[0].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"start",11);addText(right,bottom+25,new Date(candles[candles.length-1].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"end",11);
     addText(left,top-16,"السعر (ليرة)","start",12);addText(left,548,"RSI (14)","start",12);
@@ -694,7 +700,7 @@
   const loadTradingChart = async () => {
     const id=$("chartInstrument")?.value;if(!id)return;
     try{const [chart,board]=await Promise.all([api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),api("/api/market/board",{headers:{}})]);
-      drawMarketChart(chart.points||[]);const item=board.market.find(x=>x.id===id);
+      drawMarketChart(chart.points||[],board.openTrades||[]);const item=board.market.find(x=>x.id===id);
       if(item?.priceMicro)$("chartLastPrice").textContent=(Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
       if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
       const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;$("chartBotStatus").textContent=botEnabled?"البوت يعمل بالخلفية":"بانتظار سعر الإدارة";$("chartBotStatus").classList.toggle("running",botEnabled);
