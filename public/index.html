@@ -7,7 +7,7 @@
   <meta name="description" content="SYR TRADER - منصة التداول">
   <title>SYR TRADER</title>
   <style>
-    :root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--line:#26364c;--text:#edf3fb;--muted:#9aabc0;--accent:#36c9a0;--danger:#ff8d8d}
+    :root{color-scheme:dark;--bg:#172638;--panel:#22364b;--line:#45617d;--text:#f7fbff;--muted:#c0d0e0;--accent:#52dfb4;--danger:#ff9b9b}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#172d3c 0,transparent 35%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
     header{display:flex;align-items:center;justify-content:space-between;padding:18px max(5vw,18px);border-bottom:1px solid var(--line)}
     .brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}.status{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:7px 11px;border-radius:30px}
@@ -20,7 +20,7 @@
     button.primary{background:var(--accent);color:#06251d;font-weight:800}button:disabled{opacity:.55;cursor:wait}
     .tabs button[aria-selected=true]{background:var(--accent);color:#06251d;font-weight:700}
     label{display:block;font-size:13px;color:#c4d1df;margin:13px 0 7px}
-    input,textarea{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit;outline:none}textarea{resize:vertical}
+    input,textarea{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#1b2d42;color:var(--text);font:inherit;outline:none}textarea{resize:vertical}
     input:focus{border-color:var(--accent)}.form-actions{margin-top:18px}.form-actions button{width:100%}
     .message{min-height:24px;margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7}.message.error{color:var(--danger)}.message.success{color:var(--accent)}
     .hidden{display:none!important}.account-line{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.account-line span:first-child{color:var(--muted)}
@@ -28,13 +28,13 @@
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}#userWallets{grid-template-columns:1fr}.card{min-height:130px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0}
     .subpanel{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.subpanel h3{font-size:16px;margin:0 0 12px}
     .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
-    select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b1422;color:var(--text);font:inherit}
+    select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#1b2d42;color:var(--text);font:inherit}
     .divider{border-top:1px solid var(--line);margin:20px 0}.notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
     .app-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}.app-nav button{flex:1;min-width:88px}.app-nav button[aria-current="page"]{background:var(--accent);color:#06251d;font-weight:800}.app-page{display:none}.app-page.active{display:block}.app-page>section{margin-top:18px}
     .trade-workspace{margin-top:20px}.trade-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.7fr);gap:16px}
-    .chart-panel{background:#0a1321;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
+    .chart-panel{background:#1a2d42;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
     .trade-toolbar,.trade-tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0}.trade-toolbar select{max-width:220px}
     .trade-tabs button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.trade-view{display:none}.trade-view.active{display:block}
     .bot-pill{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:5px 9px;color:var(--muted)}.bot-pill.running{color:var(--accent);border-color:var(--accent)}
@@ -103,16 +103,16 @@
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
           <div class="subpanel">
             <h3>صفقة تجريبية</h3>
-            <div class="account-line"><span>الرصيد التجريبي</span><strong id="terminalCash">10,000 ليرة</strong></div>
+            <div class="account-line"><span>الرصيد التجريبي</span><strong id="terminalCash">10,000 ليرة</strong></div><div class="notice">رافعة مالية تجريبية ثابتة <strong>20x</strong> — الهامش المطلوب 5% من قيمة الصفقة. الأرباح والخسائر محاكاة فقط.</div>
             <form id="terminalOrderForm">
-              <label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء وحدات</option><option value="sell">بيع وحدات</option></select>
+              <label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء (لونغ)</option><option value="sell">بيع (شورت)</option></select>
               <label for="terminalQuantity">الكمية</label><input id="terminalQuantity" type="number" min="0.000001" step="0.000001" required>
               <button class="primary" type="submit">تنفيذ الصفقة التجريبية</button>
             </form>
             <div id="terminalMessage" class="message" role="status"></div>
           </div>
           <div class="trade-tabs"><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button></div>
-          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>آخر الصفقات</h3><div id="terminalOrders" class="muted">—</div></div>
+          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>الصفقات المفتوحة</h3><div id="openTradesList" class="muted">—</div><h3>آخر الصفقات</h3><div id="terminalOrders" class="muted">—</div></div>
           <div id="tradeTerminalView" class="trade-view active"></div>
         </section>
         <section id="paperMarketPanel" class="subpanel hidden" aria-hidden="true">
@@ -472,6 +472,21 @@
       const terminalPositions=$("terminalPositions");terminalPositions.replaceChildren();
       if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
       else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
+      const openTrades=$("openTradesList");openTrades.replaceChildren();
+      if(!data.openTrades?.length)openTrades.textContent="لا توجد صفقات مفتوحة.";
+      else data.openTrades.forEach(t=>{
+        const row=document.createElement("div");row.className="ledger-row";
+        const info=document.createElement("span");
+        const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+        const entry=(Number(t.entryPriceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2});
+        const current=Number(t.currentPriceMicro)/1000000;
+        const change=(current-Number(t.entryPriceMicro)/1000000)*(t.direction==="long"?1:-1);
+        const pnl=change*Number(t.quantityMicro)/100;
+        info.textContent=(t.direction==="long"?"شراء / لونغ":"بيع / شورت")+" · "+qty+" · دخول "+entry+" ليرة · 20x · ربح/خسارة تقديري "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
+        const close=document.createElement("button");close.type="button";close.className="primary";close.textContent="إغلاق الصفقة";
+        close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
+        row.append(info,close);openTrades.appendChild(row);
+      });
       const terminalOrders=$("terminalOrders");terminalOrders.replaceChildren();
       if(!data.orders.length)terminalOrders.textContent="لا توجد صفقات منفذة.";
       else data.orders.forEach(o=>addTextRow(terminalOrders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol,(Number(o.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" · "+(Number(o.totalCents)/100).toFixed(2)+" ليرة"));
@@ -513,7 +528,7 @@
   $("chartInstrument").addEventListener("change",loadTradingChart);
   $("marketBotForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("marketBotForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:true,volatilityBps:Number($("botVolatility").value),driftBps:Number($("botDrift").value)})});message($("botAdminMessage"),"تم تشغيل البوت على الخادم.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
   $("stopBotButton").addEventListener("click",async()=>{const b=$("stopBotButton");b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:false,volatilityBps:Number($("botVolatility").value||80),driftBps:Number($("botDrift").value||0)})});message($("botAdminMessage"),"تم إيقاف البوت.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
-  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/paper/order",{method:"POST",body:JSON.stringify({instrumentId:$("chartInstrument").value,side:$("terminalSide").value,quantity:Number($("terminalQuantity").value)})});$("terminalQuantity").value="";message($("terminalMessage"),"تم تنفيذ الصفقة التجريبية.","success");await loadPaperMarket();await loadPaperHistory();await loadTradingChart();}catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
+  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{const direction=$("terminalSide").value==="buy"?"long":"short";await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId:$("chartInstrument").value,direction,quantity:Number($("terminalQuantity").value)})});$("terminalQuantity").value="";message($("terminalMessage"),"تم فتح الصفقة التجريبية برافعة 20x.","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
