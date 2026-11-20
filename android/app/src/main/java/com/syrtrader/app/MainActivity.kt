@@ -149,7 +149,9 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
                 }
-                listOf("الرئيسية", "المحفظة", "السوق", "الصفقات", "تداول").forEachIndexed { index, label ->
+                val navItems = mutableListOf("الرئيسية", "المحفظة", "السوق", "الصفقات", "تداول")
+                if (user.optString("role") == "admin") navItems.add("الإدارة")
+                navItems.forEachIndexed { index, label ->
                     val b = Button(this@MainActivity).apply {
                         text = label
                         isAllCaps = false
@@ -168,6 +170,7 @@ class MainActivity : Activity() {
                             2 -> loadMarket(cookie)
                             3 -> loadPositions(cookie)
                             4 -> loadTrading(cookie)
+                            5 -> loadAdmin(cookie)
                         }
                     }
                 }
@@ -591,6 +594,86 @@ class MainActivity : Activity() {
             }
         }
     }
+    private fun loadAdmin(cookie: String) {
+        val content = dashboardContent() ?: return
+        content.removeAllViews()
+        content.addView(text("جارٍ تحميل لوحة الإدارة...", 14, muted), match())
+        executor.execute {
+            try {
+                val users = request("GET", "/api/admin/users", null, cookie)
+                val finance = request("GET", "/api/admin/finance-requests", null, cookie)
+                val reserve = request("GET", "/api/admin/platform-reserve", null, cookie)
+                runOnUiThread {
+                    content.removeAllViews()
+                    val summary = card()
+                    content.addView(summary, match())
+                    val heading = text("لوحة الإدارة", 20, teal, true)
+                    heading.gravity = Gravity.RIGHT
+                    summary.addView(heading, match())
+                    val userRows = users.optJSONArray("users")
+                    val depositRows = finance.optJSONArray("deposits")
+                    val withdrawalRows = finance.optJSONArray("withdrawals")
+                    fun pendingCount(rows: org.json.JSONArray?): Int {
+                        var count = 0
+                        if (rows != null) for (i in 0 until rows.length()) {
+                            if (rows.optJSONObject(i)?.optString("status") == "pending") count++
+                        }
+                        return count
+                    }
+                    val stats = listOf(
+                        "عدد الحسابات: \${userRows?.length() ?: 0}",
+                        "طلبات الإيداع المعلقة: \${pendingCount(depositRows)}",
+                        "طلبات السحب المعلقة: \${pendingCount(withdrawalRows)}"
+                    )
+                    stats.forEach { value ->
+                        val line = text(value, 15, Color.WHITE, true)
+                        line.gravity = Gravity.RIGHT
+                        line.setPadding(0, dp(12), 0, dp(6))
+                        summary.addView(line, match())
+                    }
+                    val reserveTitle = text("احتياطي المنصة", 17, teal, true)
+                    reserveTitle.gravity = Gravity.RIGHT
+                    reserveTitle.setPadding(0, dp(18), 0, dp(8))
+                    content.addView(reserveTitle, match())
+                    val balances = reserve.optJSONArray("balances")
+                    if (balances == null || balances.length() == 0) {
+                        val empty = text("لا توجد بيانات احتياطي", 13, muted)
+                        empty.gravity = Gravity.RIGHT
+                        content.addView(empty, match())
+                    } else for (i in 0 until balances.length()) {
+                        val item = balances.optJSONObject(i) ?: continue
+                        val symbol = item.optString("assetSymbol")
+                        val available = item.optLong("availableMinor") / 100.0
+                        val reserved = item.optLong("reservedMinor") / 100.0
+                        val line = text("$symbol • المتاح: \${String.format("%.2f", available)} • المحجوز: \${String.format("%.2f", reserved)}", 13, Color.WHITE)
+                        line.gravity = Gravity.RIGHT
+                        line.setPadding(0, dp(8), 0, dp(4))
+                        content.addView(line, match())
+                    }
+                    val financeTitle = text("آخر الطلبات المالية", 17, teal, true)
+                    financeTitle.gravity = Gravity.RIGHT
+                    financeTitle.setPadding(0, dp(18), 0, dp(8))
+                    content.addView(financeTitle, match())
+                    fun addRequests(rows: org.json.JSONArray?, label: String) {
+                        if (rows == null) return
+                        for (i in 0 until minOf(rows.length(), 15)) {
+                            val item = rows.optJSONObject(i) ?: continue
+                            val amount = item.optLong("amount") / 100.0
+                            val line = text("$label • \${item.optString("displayName")} • \${String.format("%.2f", amount)} • \${item.optString("status")}", 12, Color.WHITE)
+                            line.gravity = Gravity.RIGHT
+                            line.setPadding(0, dp(7), 0, dp(4))
+                            content.addView(line, match())
+                        }
+                    }
+                    addRequests(depositRows, "إيداع")
+                    addRequests(withdrawalRows, "سحب")
+                }
+            } catch (e: Exception) {
+                runOnUiThread { content.removeAllViews(); showError(content, e.message) }
+            }
+        }
+    }
+
     private fun loadPositions(cookie: String) {
         val content = dashboardContent() ?: return
         content.removeAllViews()
