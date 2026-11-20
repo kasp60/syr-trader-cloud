@@ -249,7 +249,7 @@ const ensureSypMarket = async (db) => {
         db.prepare("INSERT INTO market_prices(instrument_id,price_micro,updated_at) VALUES('syr-usd-syp',?,?)").bind(priceMicro,now),
         db.prepare("INSERT INTO market_price_history(id,instrument_id,price_micro,source,created_at) VALUES(?,'syr-usd-syp',?,'manual',?)").bind(crypto.randomUUID(),priceMicro,now)
       ]);
-      await db.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_at) VALUES('syr-usd-syp',0,80,0,?) ON CONFLICT(instrument_id) DO NOTHING").bind(now).run();
+      await db.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_at) VALUES('syr-usd-syp',1,80,0,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(now).run();
     }
   }
 };
@@ -395,6 +395,7 @@ const walletApi = async (request, env, url) => {
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const id=String(body.instrumentId||""), enabled=body.enabled, volatility=Number(body.volatilityBps), drift=Number(body.driftBps||0);
     if(!id||id.length>80||typeof enabled!=="boolean"||!Number.isInteger(volatility)||volatility<1||volatility>2000||!Number.isInteger(drift)||drift< -500||drift>500)return json({ok:false,error:"إعدادات البوت غير صحيحة"},400);
+    if(!enabled)return json({ok:false,error:"بوت السوق يعمل دائماً ولا يمكن إيقافه"},409);
     const instrument=await env.DB.prepare("SELECT id FROM market_instruments WHERE id=? AND is_active=1").bind(id).first();
     if(!instrument)return json({ok:false,error:"الأداة غير موجودة أو موقوفة"},404);
     await env.DB.prepare("INSERT INTO market_bots (instrument_id,enabled,volatility_bps,drift_bps,last_tick_at,updated_by,updated_at) VALUES (?,?,?,?,NULL,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=excluded.enabled,volatility_bps=excluded.volatility_bps,drift_bps=excluded.drift_bps,last_tick_at=NULL,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(id,enabled?1:0,volatility,drift,user.id,new Date().toISOString()).run();
@@ -629,10 +630,10 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?) ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(rate,user.id,now),
       env.DB.prepare("INSERT INTO market_prices(instrument_id,price_micro,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,user.id,now),
       env.DB.prepare("INSERT INTO market_price_history(id,instrument_id,price_micro,source,created_at) VALUES(?,'syr-usd-syp',?,'manual',?)").bind(crypto.randomUUID(),priceMicro,now),
-      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',0,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
+      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
     ]);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
-    return json({ok:true,rate,botEnabled:!!bot?.enabled});
+    return json({ok:true,rate,botEnabled:true});
   }
 
   if (url.pathname === "/api/wallet/member-code" && request.method === "GET") {
