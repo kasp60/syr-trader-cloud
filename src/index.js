@@ -1022,7 +1022,7 @@ const walletApi = async (request, env, url) => {
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const assetSymbol=String(body.assetSymbol||""),amountMinor=Number(body.amountMinor);
     const externalReference=String(body.externalReference||"").trim(),note=String(body.note||"").trim();
-    if(!["SYP","USD"].includes(assetSymbol)||!Number.isSafeInteger(amountMinor)||amountMinor<=0||amountMinor>1000000000000000||externalReference.length<3||externalReference.length>120||note.length<3||note.length>240)
+    if(body.confirmedExternalFunding!==true||!["SYP","USD"].includes(assetSymbol)||!Number.isSafeInteger(amountMinor)||amountMinor<=0||amountMinor>1000000000000000||externalReference.length<3||externalReference.length>120||note.length<3||note.length>240)
       return json({ok:false,error:"أدخل العملة والمبلغ ومرجع التمويل والملاحظة بشكل صحيح"},400);
     const id=crypto.randomUUID(),now=new Date().toISOString();
     let result;
@@ -1037,7 +1037,7 @@ const walletApi = async (request, env, url) => {
       if(duplicate)return json({ok:false,error:"مرجع التمويل مسجل مسبقاً لهذه العملة"},409);
       throw new Error("تعذر تسجيل تمويل الاحتياطي");
     }
-    if(!result?.[0]?.meta?.changes||!result?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إضافة المبلغ؛ تحقق من الرصيد أو المرجع"},409);
+    if(!result?.[0]?.meta?.changes||!result?.[1]?.meta?.changes||!result?.[2]?.meta?.changes)return json({ok:false,error:"تعذر إضافة المبلغ؛ تحقق من الرصيد أو المرجع"},409);
     await syncPlatformReserve(env.DB);
     const balance=await env.DB.prepare("SELECT balance_minor AS balanceMinor,reserved_minor AS reservedMinor,required_minor AS requiredMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(assetSymbol).first();
     return json({ok:true,assetSymbol,amountMinor,balance});
