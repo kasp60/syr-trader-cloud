@@ -7,20 +7,20 @@
   <meta name="description" content="SYR TRADER - منصة التداول">
   <title>SYR TRADER</title>
   <style>
-    :root{color-scheme:dark;--bg:#172638;--panel:#22364b;--line:#45617d;--text:#f7fbff;--muted:#c0d0e0;--accent:#52dfb4;--danger:#ff9b9b}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#172d3c 0,transparent 35%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+    :root{color-scheme:dark;--bg:#101d33;--panel:#29496b;--line:#547da5;--text:#ffffff;--muted:#d5e6f7;--accent:#27f0bd;--danger:#ff747f}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#245b83 0,transparent 42%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
     header{display:flex;align-items:center;justify-content:space-between;padding:18px max(5vw,18px);border-bottom:1px solid var(--line)}
     .brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}.status{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:7px 11px;border-radius:30px}
     main{max-width:1080px;margin:42px auto;padding:0 20px}.eyebrow{color:var(--accent);font-size:13px;font-weight:700}
     h1{font-size:clamp(28px,5vw,46px);margin:10px 0}.intro{color:var(--muted);line-height:1.9;max-width:700px}
     .layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(290px,.85fr);gap:18px;margin-top:28px}
-    .panel,.card{background:linear-gradient(145deg,#162337,#101a29);border:1px solid var(--line);border-radius:18px;padding:22px}
+    .panel,.card{background:linear-gradient(145deg,#315779,#203d5c);border:1px solid var(--line);border-radius:18px;padding:22px}
     .panel h2,.card h2{font-size:18px;margin:0 0 16px}.tabs{display:flex;gap:8px;margin-bottom:18px}
-    button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:#24364b;color:var(--text)}
+    button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:#3b5f83;color:#ffffff}
     button.primary{background:var(--accent);color:#06251d;font-weight:800}button:disabled{opacity:.55;cursor:wait}
     .tabs button[aria-selected=true]{background:var(--accent);color:#06251d;font-weight:700}
-    label{display:block;font-size:13px;color:#c4d1df;margin:13px 0 7px}
-    input,textarea{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#1b2d42;color:var(--text);font:inherit;outline:none}textarea{resize:vertical}
+    label{display:block;font-size:13px;color:#e5f1ff;margin:13px 0 7px}
+    input,textarea{width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:#294765;color:#ffffff;font:inherit;outline:none}textarea{resize:vertical}
     input:focus{border-color:var(--accent)}.form-actions{margin-top:18px}.form-actions button{width:100%}
     .message{min-height:24px;margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7}.message.error{color:var(--danger)}.message.success{color:var(--accent)}
     .hidden{display:none!important}.account-line{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.account-line span:first-child{color:var(--muted)}
@@ -29,12 +29,12 @@
     .subpanel{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.subpanel h3{font-size:16px;margin:0 0 12px}
     .ledger-row,.admin-wallet-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.ledger-row>span{flex:1;min-width:0}.ledger-row button{white-space:nowrap}
     select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#1b2d42;color:var(--text);font:inherit}
-    .divider{border-top:1px solid var(--line);margin:20px 0}.notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
+    .divider{border-top:1px solid var(--line);margin:20px 0}.notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#17483f;border-radius:10px;color:#e4fff6;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
     .app-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}.app-nav button{flex:1;min-width:88px}.app-nav button[aria-current="page"]{background:var(--accent);color:#06251d;font-weight:800}.app-page{display:none}.app-page.active{display:block}.app-page>section{margin-top:18px}
     .trade-workspace{margin-top:20px}.trade-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.7fr);gap:16px}
-    .chart-panel{background:#1a2d42;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
+    .chart-panel{background:#1d3857;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
     .trade-toolbar,.trade-tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0}.trade-toolbar select{max-width:220px}
     .trade-tabs button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.trade-view{display:none}.trade-view.active{display:block}
     .bot-pill{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:5px 9px;color:var(--muted)}.bot-pill.running{color:var(--accent);border-color:var(--accent)}
@@ -99,13 +99,14 @@
           <h3>التداول بالليرة</h3>
           <p class="muted">سوق واحد للدولار مقابل الليرة. المدير يحدد سعر الصرف الأولي، وبعدها يتحرك البوت تلقائياً كل دقيقة على الخادم. جميع قيم التداول معروضة بالليرة، والأسعار محاكاة وليست أسعاراً مباشرة.</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select><span id="chartLastPrice" class="bot-pill">بانتظار سعر الصرف</span><span id="chartBotStatus" class="bot-pill">البوت بانتظار سعر الإدارة</span></div>
-          <div class="chart-panel"><div class="muted">مخطط حركة سعر الصرف · آخر 180 نقطة</div><svg id="marketChart" viewBox="0 0 900 270" role="img" aria-label="مخطط سعر الدولار مقابل الليرة"><text x="450" y="135" fill="#9aabc0" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg></div>
+          <div class="chart-panel"><div class="muted">مخطط حركة سعر الصرف · آخر 180 نقطة</div><svg id="marketChart" viewBox="0 0 900 270" role="img" aria-label="مخطط سعر الدولار مقابل الليرة"><text x="450" y="135" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
           <div class="subpanel">
             <h3>صفقة تجريبية</h3>
-            <div class="account-line"><span>الرصيد التجريبي</span><strong id="terminalCash">10,000 ليرة</strong></div><div class="notice">رافعة مالية تجريبية ثابتة <strong>20x</strong> — الهامش المطلوب 5% من قيمة الصفقة. الأرباح والخسائر محاكاة فقط.</div>
+            <div class="account-line"><span>الرصيد التجريبي</span><strong id="terminalCash">10,000 ليرة</strong></div><div class="notice">اختر الرافعة لكل صفقة من 1x إلى 20x. كلما زادت الرافعة زادت المخاطرة، والتداول هنا تجريبي فقط.</div>
             <form id="terminalOrderForm">
               <label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء (لونغ)</option><option value="sell">بيع (شورت)</option></select>
+              <label for="terminalLeverage">الرافعة المالية</label><select id="terminalLeverage"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option><option value="7">7x</option><option value="8">8x</option><option value="9">9x</option><option value="10">10x</option><option value="11">11x</option><option value="12">12x</option><option value="13">13x</option><option value="14">14x</option><option value="15">15x</option><option value="16">16x</option><option value="17">17x</option><option value="18">18x</option><option value="19">19x</option><option value="20">20x</option></select>
               <label for="terminalQuantity">الكمية</label><input id="terminalQuantity" type="number" min="0.000001" step="0.000001" required>
               <button class="primary" type="submit">تنفيذ الصفقة التجريبية</button>
             </form>
@@ -482,7 +483,7 @@
         const current=Number(t.currentPriceMicro)/1000000;
         const change=(current-Number(t.entryPriceMicro)/1000000)*(t.direction==="long"?1:-1);
         const pnl=change*Number(t.quantityMicro);
-        info.textContent=(t.direction==="long"?"شراء / لونغ":"بيع / شورت")+" · "+qty+" · دخول "+entry+" ليرة · 20x · ربح/خسارة تقديري "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
+        info.textContent=(t.direction==="long"?"شراء / لونغ":"بيع / شورت")+" · "+qty+" · دخول "+entry+" ليرة · " + Number(t.leverage) + "x · ربح/خسارة تقديري ""+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
         const close=document.createElement("button");close.type="button";close.className="primary";close.textContent="إغلاق الصفقة";
         close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
         row.append(info,close);openTrades.appendChild(row);
@@ -528,7 +529,7 @@
   $("chartInstrument").addEventListener("change",loadTradingChart);
   $("marketBotForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("marketBotForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:true,volatilityBps:Number($("botVolatility").value),driftBps:Number($("botDrift").value)})});message($("botAdminMessage"),"تم تشغيل البوت على الخادم.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
   $("stopBotButton").addEventListener("click",async()=>{const b=$("stopBotButton");b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:false,volatilityBps:Number($("botVolatility").value||80),driftBps:Number($("botDrift").value||0)})});message($("botAdminMessage"),"تم إيقاف البوت.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
-  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{const direction=$("terminalSide").value==="buy"?"long":"short";await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId:$("chartInstrument").value,direction,quantity:Number($("terminalQuantity").value)})});$("terminalQuantity").value="";message($("terminalMessage"),"تم فتح الصفقة التجريبية برافعة 20x.","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
+  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{const direction=$("terminalSide").value==="buy"?"long":"short";await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId:$("chartInstrument").value,direction,quantity:Number($("terminalQuantity").value),leverage:Number($("terminalLeverage").value)})});$("terminalQuantity").value="";message($("terminalMessage"),"تم فتح الصفقة التجريبية برافعة "+$("terminalLeverage").value+"x.","success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
