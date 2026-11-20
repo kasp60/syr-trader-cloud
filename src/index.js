@@ -162,10 +162,34 @@ const ensurePaperSchema = async (db) => {
       instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
       price_micro INTEGER NOT NULL, created_at TEXT NOT NULL
     )`),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_ledger_user_created ON paper_ledger(user_id,created_at)")
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_ledger_user_created ON paper_ledger(user_id,created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS market_bots (instrument_id TEXT PRIMARY KEY REFERENCES market_instruments(id) ON DELETE CASCADE, enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)), volatility_bps INTEGER NOT NULL DEFAULT 80 CHECK(volatility_bps BETWEEN 1 AND 2000), drift_bps INTEGER NOT NULL DEFAULT 0 CHECK(drift_bps BETWEEN -500 AND 500), last_tick_at TEXT, updated_by TEXT REFERENCES users(id), updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS market_price_history (id TEXT PRIMARY KEY, instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE CASCADE, price_micro INTEGER NOT NULL CHECK(price_micro > 0), source TEXT NOT NULL CHECK(source IN ('manual','bot')), created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_market_history_instrument_time ON market_price_history(instrument_id,created_at)")
   ]);
 };
 
+const runScheduledMarketBots = async (db) => {
+  await ensurePaperSchema(db);
+  const result = await db.prepare("SELECT b.instrument_id AS instrumentId,b.volatility_bps AS volatilityBps,b.drift_bps AS driftBps,p.price_micro AS priceMicro FROM market_bots b JOIN market_prices p ON p.instrument_id=b.instrument_id JOIN market_instruments i ON i.id=b.instrument_id WHERE b.enabled=1 AND i.is_active=1").all();
+  let changed=0;
+  for (const bot of (result.results || [])) {
+    const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
+    const noise=(bytes[0]/4294967295)*2-1;
+    const bps=Math.max(-2500,Math.min(2500,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
+    const previous=Number(bot.priceMicro);
+    const next=Math.max(1,Math.round(previous*(1+bps/10000)));
+    if(!Number.isSafeInteger(next)||next===previous)continue;
+    const now=new Date().toISOString();
+    const batch=await db.batch([
+      db.prepare("UPDATE market_prices SET price_micro=?,updated_at=? WHERE instrument_id=? AND price_micro=? AND EXISTS (SELECT 1 FROM market_bots WHERE instrument_id=? AND enabled=1)").bind(next,now,bot.instrumentId,previous,bot.instrumentId),
+      db.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) SELECT ?,?,?,'bot',? WHERE changes()=1").bind(crypto.randomUUID(),bot.instrumentId,next,now),
+      db.prepare("UPDATE market_bots SET last_tick_at=? WHERE instrument_id=? AND enabled=1").bind(now,bot.instrumentId)
+    ]);
+    if(Number(batch[0]?.meta?.changes||0)>0)changed++;
+  }
+  return {checked:(result.results||[]).length,changed};
+};
 const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
@@ -217,6 +241,12 @@ const walletApi = async (request, env, url) => {
   }
 
 
+  if (url.pathname === "/api/market/chart" && request.method === "GET") {
+    const id=String(url.searchParams.get("instrumentId")||"");
+    if(!id||id.length>80)return json({ok:false,error:"اختر أداة صحيحة"},400);
+    const rows=await env.DB.prepare("SELECT price_micro AS priceMicro,created_at AS createdAt,source FROM market_price_history WHERE instrument_id=? ORDER BY created_at DESC LIMIT 180").bind(id).all();
+    return json({ok:true,points:(rows.results||[]).reverse()});
+  }
   if (url.pathname === "/api/market/board" && request.method === "GET") {
     const [market, account, positions, orders] = await Promise.all([
       env.DB.prepare(`SELECT i.id,i.symbol,i.name,i.quote_symbol AS quoteSymbol,p.price_micro AS priceMicro,p.updated_at AS updatedAt
@@ -235,12 +265,24 @@ const walletApi = async (request, env, url) => {
       positions:positions.results||[],orders:orders.results||[]});
   }
 
+  if (url.pathname === "/api/admin/market-bot" && request.method === "POST") {
+    if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
+    if(!requireSameOrigin(request,url))return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const id=String(body.instrumentId||""), enabled=body.enabled, volatility=Number(body.volatilityBps), drift=Number(body.driftBps||0);
+    if(!id||id.length>80||typeof enabled!=="boolean"||!Number.isInteger(volatility)||volatility<1||volatility>2000||!Number.isInteger(drift)||drift< -500||drift>500)return json({ok:false,error:"إعدادات البوت غير صحيحة"},400);
+    const instrument=await env.DB.prepare("SELECT id FROM market_instruments WHERE id=? AND is_active=1").bind(id).first();
+    if(!instrument)return json({ok:false,error:"الأداة غير موجودة أو موقوفة"},404);
+    await env.DB.prepare("INSERT INTO market_bots (instrument_id,enabled,volatility_bps,drift_bps,last_tick_at,updated_by,updated_at) VALUES (?,?,?,?,NULL,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=excluded.enabled,volatility_bps=excluded.volatility_bps,drift_bps=excluded.drift_bps,last_tick_at=NULL,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(id,enabled?1:0,volatility,drift,user.id,new Date().toISOString()).run();
+    return json({ok:true,instrumentId:id,enabled,volatilityBps:volatility,driftBps:drift});
+  }
   if (url.pathname === "/api/admin/market-instruments" && request.method === "GET") {
     if (user.role !== "admin") return json({ok:false,error:"غير مصرح"},403);
     const rows=await env.DB.prepare(`SELECT i.id,i.symbol,i.name,i.is_active AS isActive,
-      p.price_micro AS priceMicro,p.updated_at AS updatedAt
+      p.price_micro AS priceMicro,p.updated_at AS updatedAt,COALESCE(b.enabled,0) AS botEnabled,
+      COALESCE(b.volatility_bps,80) AS volatilityBps,COALESCE(b.drift_bps,0) AS driftBps
       FROM market_instruments i LEFT JOIN market_prices p ON p.instrument_id=i.id
-      ORDER BY i.symbol`).all();
+      LEFT JOIN market_bots b ON b.instrument_id=i.id ORDER BY i.symbol`).all();
     return json({ok:true,instruments:rows.results||[]});
   }
 
@@ -297,6 +339,7 @@ const walletApi = async (request, env, url) => {
       VALUES (?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,
       updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
       .bind(instrumentId,priceMicro,user.id,new Date().toISOString()).run();
+    await env.DB.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) VALUES (?,?,?,'manual',?)").bind(crypto.randomUUID(),instrumentId,priceMicro,new Date().toISOString()).run();
     return json({ok:true,priceMicro});
   }
 
@@ -764,5 +807,8 @@ export default {
       });
     }
     return new Response("SYR TRADER assets are not configured.", { status: 503 });
+  },
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil((async()=>{const stats=await runScheduledMarketBots(env.DB);console.log("SYR_TRADER_MARKET_CRON",{scheduledTime:controller.scheduledTime,...stats});})());
   }
 };
