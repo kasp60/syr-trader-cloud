@@ -317,7 +317,8 @@
       market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren();
       data.market.forEach(item => {
         const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" USD" : "السعر غير محدد";
-        addTextRow(market,item.symbol+" · "+item.name,price);
+        const updated = item.updatedAt ? "آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar") : "لم يحدد المدير سعراً بعد";
+        addTextRow(market,item.symbol+" · "+item.name,price+" · "+updated+" · سعر يدوي وليس مباشراً");
         const opt=document.createElement("option"); opt.value=item.id; opt.textContent=item.symbol+" · "+item.name;
         tradeSelect.appendChild(opt);
         const adminOpt=opt.cloneNode(true); adminSelect.appendChild(adminOpt);
