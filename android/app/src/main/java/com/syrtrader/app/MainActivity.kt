@@ -595,31 +595,35 @@ class MainActivity : Activity() {
                     val limitPrice = input("السعر المطلوب بالليرة", false)
                     limitPrice.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
                     card.addView(limitPrice, fieldParams())
-                    val limitButton = actionButton("وضع أمر معلّق للشراء")
-                    card.addView(limitButton, fieldParams())
-                    limitButton.setOnClickListener {
+                    fun placeLimit(direction: String, button: Button) {
                         val amount = margin.text.toString().trim().toDoubleOrNull()
                         val lev = leverage.text.toString().trim().toIntOrNull()
                         val target = limitPrice.text.toString().trim().toDoubleOrNull()
-                        if (amount == null || amount <= 0 || lev == null || lev !in 1..20 || target == null || target <= 0 || (directionLongInvalid(amount))) {
+                        if (amount == null || amount <= 0 || lev == null || lev !in 1..20 || target == null || target <= 0 || (direction == "long" && amount % 1.0 != 0.0)) {
                             result.text = "تحقق من الهامش والرافعة والسعر المحدد."
-                            return@setOnClickListener
+                            return
                         }
-                        limitButton.isEnabled = false
+                        button.isEnabled = false
                         executor.execute {
                             try {
                                 val payload = JSONObject().put("instrumentId", instrument.optString("id"))
-                                    .put("direction", "long").put("margin", amount).put("leverage", lev).put("limitPrice", target)
+                                    .put("direction", direction).put("margin", amount).put("leverage", lev).put("limitPrice", target)
                                 val response = request("POST", "/api/paper/limit-order", payload.toString(), cookie)
                                 runOnUiThread {
                                     result.text = "تم تسجيل الأمر المعلّق: ${response.optString("orderId")}"
-                                    limitButton.isEnabled = true
+                                    button.isEnabled = true
                                 }
                             } catch (e: Exception) {
-                                runOnUiThread { result.text = e.message ?: "تعذر تسجيل الأمر"; limitButton.isEnabled = true }
+                                runOnUiThread { result.text = e.message ?: "تعذر تسجيل الأمر"; button.isEnabled = true }
                             }
                         }
                     }
+                    val limitBuy = actionButton("أمر معلّق للشراء")
+                    card.addView(limitBuy, fieldParams())
+                    limitBuy.setOnClickListener { placeLimit("long", limitBuy) }
+                    val limitSell = actionButton("أمر معلّق للبيع")
+                    card.addView(limitSell, fieldParams())
+                    limitSell.setOnClickListener { placeLimit("short", limitSell) }
                 }
             } catch (e: Exception) {
                 runOnUiThread { content.removeAllViews(); showError(content, e.message) }
