@@ -588,7 +588,8 @@ const authApi = async (request, env, url) => {
           WHEN auth_login_limits.attempts+1>=10 THEN ? ELSE auth_login_limits.blocked_until END
       RETURNING attempts,blocked_until`).bind(loginKey,nowSeconds,nowSeconds,nowSeconds-900,nowSeconds,nowSeconds-900,nowSeconds,nowSeconds-900,nowSeconds+900).first();
     if (Number(limit?.blocked_until || 0) > nowSeconds) {
-      return json({ ok: false, error: "محاولات دخول كثيرة؛ حاول بعد 15 دقيقة" }, 429);
+      const retryAfter=Math.max(1,Number(limit.blocked_until)-nowSeconds);
+      return json({ ok: false, error: "محاولات دخول كثيرة؛ حاول بعد 15 دقيقة" }, 429, { "retry-after": String(retryAfter) });
     }
     const user = await env.DB.prepare(
       "SELECT id, email, password_hash, display_name, role, status FROM users WHERE email = ? LIMIT 1"
