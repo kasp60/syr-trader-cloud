@@ -117,9 +117,47 @@ const requireSameOrigin = (request, url) => {
   return Boolean(origin && origin === url.origin);
 };
 
+
+const ensurePaperSchema = async (db) => {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS market_instruments (
+      id TEXT PRIMARY KEY, symbol TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+      quote_symbol TEXT NOT NULL DEFAULT 'USD', is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS market_prices (
+      instrument_id TEXT PRIMARY KEY REFERENCES market_instruments(id) ON DELETE CASCADE,
+      price_micro INTEGER NOT NULL CHECK(price_micro > 0),
+      updated_by TEXT REFERENCES users(id), updated_at TEXT NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS paper_accounts (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      cash_cents INTEGER NOT NULL DEFAULT 1000000 CHECK(cash_cents >= 0),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS paper_positions (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
+      quantity_micro INTEGER NOT NULL DEFAULT 0 CHECK(quantity_micro >= 0),
+      PRIMARY KEY(user_id,instrument_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS paper_orders (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
+      side TEXT NOT NULL CHECK(side IN ('buy','sell')), quantity_micro INTEGER NOT NULL CHECK(quantity_micro > 0),
+      price_micro INTEGER NOT NULL CHECK(price_micro > 0), total_cents INTEGER NOT NULL CHECK(total_cents > 0),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_orders_user_created ON paper_orders(user_id,created_at)")
+  ]);
+};
+
 const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+  await ensurePaperSchema(env.DB);
+  await env.DB.prepare("INSERT OR IGNORE INTO paper_accounts (user_id,cash_cents) VALUES (?,1000000)").bind(user.id).run();
 
   if (url.pathname === "/api/admin/users" && request.method === "GET") {
     if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
@@ -160,6 +198,105 @@ const walletApi = async (request, env, url) => {
       await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
     }
     return json({ ok: true, userId, status });
+  }
+
+
+  if (url.pathname === "/api/market/board" && request.method === "GET") {
+    const [market, account, positions, orders] = await Promise.all([
+      env.DB.prepare(`SELECT i.id,i.symbol,i.name,i.quote_symbol AS quoteSymbol,p.price_micro AS priceMicro,p.updated_at AS updatedAt
+        FROM market_instruments i LEFT JOIN market_prices p ON p.instrument_id=i.id
+        WHERE i.is_active=1 ORDER BY i.symbol`).all(),
+      env.DB.prepare("SELECT cash_cents AS cashCents FROM paper_accounts WHERE user_id=?").bind(user.id).first(),
+      env.DB.prepare(`SELECT pp.instrument_id AS instrumentId,pp.quantity_micro AS quantityMicro,i.symbol
+        FROM paper_positions pp JOIN market_instruments i ON i.id=pp.instrument_id
+        WHERE pp.user_id=? AND pp.quantity_micro>0`).bind(user.id).all(),
+      env.DB.prepare(`SELECT o.id,o.side,o.quantity_micro AS quantityMicro,o.price_micro AS priceMicro,
+        o.total_cents AS totalCents,o.created_at AS createdAt,i.symbol
+        FROM paper_orders o JOIN market_instruments i ON i.id=o.instrument_id
+        WHERE o.user_id=? ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all()
+    ]);
+    return json({ok:true,market:market.results||[],cashCents:account?.cashCents??0,
+      positions:positions.results||[],orders:orders.results||[]});
+  }
+
+  if (url.pathname === "/api/admin/market-instrument" && request.method === "POST") {
+    if (user.role !== "admin") return json({ok:false,error:"غير مصرح"},403);
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body; try { body=await readJson(request); } catch { return json({ok:false,error:"بيانات الطلب غير صحيحة"},400); }
+    const symbol=String(body.symbol||"").trim().toUpperCase();
+    const name=String(body.name||"").trim();
+    if (!/^[A-Z0-9._-]{2,20}$/.test(symbol)||name.length<2||name.length>60)
+      return json({ok:false,error:"رمز السوق أو الاسم غير صحيح"},400);
+    try {
+      await env.DB.prepare("INSERT INTO market_instruments (id,symbol,name,quote_symbol) VALUES (?,?,?,'USD')")
+        .bind(crypto.randomUUID(),symbol,name).run();
+    } catch { return json({ok:false,error:"الرمز موجود مسبقاً أو تعذر إنشاء الأداة"},409); }
+    return json({ok:true});
+  }
+
+  if (url.pathname === "/api/admin/market-price" && request.method === "POST") {
+    if (user.role !== "admin") return json({ok:false,error:"غير مصرح"},403);
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body; try { body=await readJson(request); } catch { return json({ok:false,error:"بيانات الطلب غير صحيحة"},400); }
+    const instrumentId=String(body.instrumentId||"");
+    const price=Number(body.price);
+    if (!instrumentId||instrumentId.length>80||!Number.isFinite(price)||price<=0||price>1000000000)
+      return json({ok:false,error:"السعر غير صحيح"},400);
+    const priceMicro=Math.round(price*1000000);
+    if (!Number.isSafeInteger(priceMicro)||priceMicro<=0) return json({ok:false,error:"دقة السعر غير مقبولة"},400);
+    const exists=await env.DB.prepare("SELECT id FROM market_instruments WHERE id=? AND is_active=1").bind(instrumentId).first();
+    if(!exists)return json({ok:false,error:"الأداة غير موجودة"},404);
+    await env.DB.prepare(`INSERT INTO market_prices (instrument_id,price_micro,updated_by,updated_at)
+      VALUES (?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,
+      updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+      .bind(instrumentId,priceMicro,user.id,new Date().toISOString()).run();
+    return json({ok:true,priceMicro});
+  }
+
+  if (url.pathname === "/api/paper/order" && request.method === "POST") {
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    let body; try { body=await readJson(request); } catch { return json({ok:false,error:"بيانات الطلب غير صحيحة"},400); }
+    const instrumentId=String(body.instrumentId||"");
+    const side=String(body.side||"");
+    const quantity=Number(body.quantity);
+    if(!instrumentId||instrumentId.length>80||!["buy","sell"].includes(side)||
+      !Number.isFinite(quantity)||quantity<=0||quantity>1000000)
+      return json({ok:false,error:"تحقق من الأداة والاتجاه والكمية"},400);
+    const quantityMicro=Math.round(quantity*1000000);
+    if(!Number.isSafeInteger(quantityMicro)||quantityMicro<=0)
+      return json({ok:false,error:"الكمية بدقة غير مقبولة"},400);
+    const instrument=await env.DB.prepare(`SELECT i.id,i.symbol,p.price_micro AS priceMicro
+      FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id
+      WHERE i.id=? AND i.is_active=1`).bind(instrumentId).first();
+    if(!instrument)return json({ok:false,error:"لا يوجد سعر معتمد لهذه الأداة حالياً"},409);
+    const totalBig=(BigInt(instrument.priceMicro)*BigInt(quantityMicro)+9999999999n)/10000000000n;
+    if(totalBig<=0n||totalBig>9007199254740991n)return json({ok:false,error:"قيمة الصفقة خارج النطاق"},400);
+    const totalCents=Number(totalBig);
+    const account=await env.DB.prepare("SELECT cash_cents AS cashCents FROM paper_accounts WHERE user_id=?").bind(user.id).first();
+    const position=await env.DB.prepare("SELECT quantity_micro AS quantityMicro FROM paper_positions WHERE user_id=? AND instrument_id=?")
+      .bind(user.id,instrumentId).first();
+    if(side==="buy"&&Number(account?.cashCents||0)<totalCents)
+      return json({ok:false,error:"رصيد التداول التجريبي غير كافٍ"},409);
+    if(side==="sell"&&Number(position?.quantityMicro||0)<quantityMicro)
+      return json({ok:false,error:"الكمية المملوكة تجريبياً غير كافية للبيع"},409);
+    const now=new Date().toISOString(),orderId=crypto.randomUUID();
+    const statements=side==="buy"?[
+      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?")
+        .bind(totalCents,now,user.id,totalCents),
+      env.DB.prepare(`INSERT INTO paper_positions (user_id,instrument_id,quantity_micro) VALUES (?,?,?)
+        ON CONFLICT(user_id,instrument_id) DO UPDATE SET quantity_micro=quantity_micro+excluded.quantity_micro`)
+        .bind(user.id,instrumentId,quantityMicro)
+    ]:[
+      env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-?")
+        .bind(totalCents,now,user.id,totalCents),
+      env.DB.prepare("UPDATE paper_positions SET quantity_micro=quantity_micro-? WHERE user_id=? AND instrument_id=? AND quantity_micro>=?")
+        .bind(quantityMicro,user.id,instrumentId,quantityMicro)
+    ];
+    statements.push(env.DB.prepare(`INSERT INTO paper_orders (id,user_id,instrument_id,side,quantity_micro,price_micro,total_cents)
+      VALUES (?,?,?,?,?,?,?)`).bind(orderId,user.id,instrumentId,side,quantityMicro,instrument.priceMicro,totalCents));
+    try { await env.DB.batch(statements); }
+    catch { return json({ok:false,error:"تعذر تنفيذ الأمر التجريبي؛ لم يتم اعتماد العملية"},409); }
+    return json({ok:true,orderId,side,symbol:instrument.symbol,quantity,price:Number(instrument.priceMicro)/1000000,totalCents});
   }
 
   if (url.pathname === "/api/market/rate" && request.method === "GET") {
@@ -377,6 +514,8 @@ const authApi = async (request, env, url) => {
   if (url.pathname === "/api/auth/me" && request.method === "GET") {
     const user = await currentUser(request, env.DB);
     if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+    await ensurePaperSchema(env.DB);
+    await env.DB.prepare("INSERT OR IGNORE INTO paper_accounts (user_id,cash_cents) VALUES (?,1000000)").bind(user.id).run();
     await env.DB.batch([
       env.DB.prepare("INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('syr-lira', 'SYP', 'ليرة', 1)"),
       env.DB.prepare("INSERT OR IGNORE INTO assets (id, symbol, name, is_active) VALUES ('usd-dollar', 'USD', 'دولار أمريكي', 1)"),
