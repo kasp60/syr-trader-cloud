@@ -299,11 +299,11 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("SELECT cash_cents AS cashCents FROM paper_accounts WHERE user_id=?").bind(user.id).first(),
       env.DB.prepare(`SELECT pp.instrument_id AS instrumentId,pp.quantity_micro AS quantityMicro,i.symbol
         FROM paper_positions pp JOIN market_instruments i ON i.id=pp.instrument_id
-        WHERE pp.user_id=? AND pp.quantity_micro>0`).bind(user.id).all(),
+        WHERE pp.user_id=? AND pp.quantity_micro>0 AND i.symbol='USD/SYP'`).bind(user.id).all(),
       env.DB.prepare(`SELECT o.id,o.side,o.quantity_micro AS quantityMicro,o.price_micro AS priceMicro,
         o.total_cents AS totalCents,o.created_at AS createdAt,i.symbol
         FROM paper_orders o JOIN market_instruments i ON i.id=o.instrument_id
-        WHERE o.user_id=? ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all()
+        WHERE o.user_id=? AND i.symbol='USD/SYP' ORDER BY o.created_at DESC LIMIT 50`).bind(user.id).all()
     ]);
     return json({ok:true,market:market.results||[],cashCents:account?.cashCents??0,
       positions:positions.results||[],orders:orders.results||[]});
@@ -411,7 +411,7 @@ const walletApi = async (request, env, url) => {
       return json({ok:false,error:"الكمية بدقة غير مقبولة"},400);
     const instrument=await env.DB.prepare(`SELECT i.id,i.symbol,p.price_micro AS priceMicro
       FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id
-      WHERE i.id=? AND i.is_active=1`).bind(instrumentId).first();
+      WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'`).bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"لا يوجد سعر معتمد لهذه الأداة حالياً"},409);
     const notional=BigInt(instrument.priceMicro)*BigInt(quantityMicro);
     const totalBig=side==="buy"?(notional+9999999999n)/10000000000n:notional/10000000000n;
