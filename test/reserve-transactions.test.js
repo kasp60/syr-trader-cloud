@@ -84,3 +84,26 @@ test("failed reference-price coverage check cannot update the market target or r
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM market_bots").get().n, 0);
   db.close();
 });
+
+
+test("fully funded reserve permits a new manager reference price", () => {
+  const db = makeDb();
+  db.exec("CREATE TABLE market_price_targets(instrument_id TEXT PRIMARY KEY,target_price_micro INTEGER,from_price_micro INTEGER,transition_started_at TEXT,transition_seconds INTEGER,updated_by TEXT,updated_at TEXT); CREATE TABLE market_bots(instrument_id TEXT PRIMARY KEY,enabled INTEGER,volatility_bps INTEGER,drift_bps INTEGER,updated_by TEXT,updated_at TEXT); CREATE TABLE exchange_rates(id TEXT PRIMARY KEY,base_symbol TEXT,quote_symbol TEXT,rate REAL,updated_by TEXT,updated_at TEXT,UNIQUE(base_symbol,quote_symbol)); INSERT INTO market_price_targets VALUES('syr-usd-syp',1000,1000,'old',60,'admin','old'); INSERT INTO exchange_rates VALUES('usd-syp','USD','SYP',1000,'admin','old'); UPDATE platform_reserve_balances SET balance_minor=1000 WHERE asset_symbol='SYP';");
+  const updateReserve = db.prepare("UPDATE platform_reserve_balances SET required_minor=CASE asset_symbol WHEN 'SYP' THEN 100 ELSE 0 END,reserved_minor=CASE asset_symbol WHEN 'SYP' THEN 100 ELSE 0 END WHERE asset_symbol IN ('SYP','USD') AND (SELECT COUNT(*) FROM platform_reserve_balances WHERE deficit_minor=0 AND ((asset_symbol='SYP' AND balance_minor>=100) OR (asset_symbol='USD' AND balance_minor>=0)))=2");
+  const updateTarget = db.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) SELECT 'syr-usd-syp',2000,1000,'new',900,'admin','new' WHERE changes()=2 ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at");
+  const updateBot = db.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) SELECT 'syr-usd-syp',1,80,0,'admin','new' WHERE changes()=1 ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at");
+  const updateRate = db.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) SELECT 'usd-syp','USD','SYP',2000,'admin','new' WHERE changes()=1 ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at");
+  db.exec("BEGIN"); updateReserve.run(); updateTarget.run(); updateBot.run(); updateRate.run(); db.exec("COMMIT");
+  assert.equal(db.prepare("SELECT target_price_micro FROM market_price_targets").get().target_price_micro, 2000);
+  assert.equal(db.prepare("SELECT rate FROM exchange_rates").get().rate, 2000);
+  assert.equal(db.prepare("SELECT enabled FROM market_bots").get().enabled, 1);
+  db.close();
+});
+
+test("external funding pays reserve deficit before increasing free reserve", () => {
+  const db = makeDb();
+  db.prepare("UPDATE platform_reserve_balances SET balance_minor=0,reserved_minor=0,required_minor=0,deficit_minor=30 WHERE asset_symbol='SYP'").run();
+  db.prepare("UPDATE platform_reserve_balances SET balance_minor=balance_minor+MAX(0,?-deficit_minor),deficit_minor=MAX(0,deficit_minor-?) WHERE asset_symbol='SYP'").run(40,40);
+  assert.deepEqual({...db.prepare("SELECT balance_minor,deficit_minor FROM platform_reserve_balances WHERE asset_symbol='SYP'").get()}, {balance_minor:10,deficit_minor:0});
+  db.close();
+});
