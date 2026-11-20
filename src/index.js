@@ -184,7 +184,7 @@ const ensurePaperSchema = async (db) => {
 const ensureFinanceSchema = async (db) => {
   await db.batch([
     db.prepare("CREATE TABLE IF NOT EXISTS member_codes (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS deposit_requests (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, amount_minor INTEGER NOT NULL CHECK(amount_minor>0), proof_base64 TEXT NOT NULL, proof_mime TEXT NOT NULL, proof_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), reviewed_by TEXT REFERENCES users(id), reviewed_at TEXT, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS deposit_requests (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, amount_minor INTEGER NOT NULL CHECK(amount_minor>0), asset_symbol TEXT NOT NULL DEFAULT 'SYP' CHECK(asset_symbol IN ('SYP','USD')), proof_base64 TEXT NOT NULL, proof_mime TEXT NOT NULL, proof_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), reviewed_by TEXT REFERENCES users(id), reviewed_at TEXT, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_deposit_requests_status_created ON deposit_requests(status,created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS withdrawal_requests (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, amount_minor INTEGER NOT NULL CHECK(amount_minor>0), payout_details TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), reviewed_by TEXT REFERENCES users(id), reviewed_at TEXT, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status_created ON withdrawal_requests(status,created_at)"),
@@ -192,6 +192,10 @@ const ensureFinanceSchema = async (db) => {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_internal_transfers_sender_created ON internal_transfers(sender_id,created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_internal_transfers_recipient_created ON internal_transfers(recipient_id,created_at)")
   ]);
+  const depositColumns=await db.prepare("PRAGMA table_info(deposit_requests)").all();
+  if(!(depositColumns.results||[]).some(column=>column.name==="asset_symbol")){
+    await db.prepare("ALTER TABLE deposit_requests ADD COLUMN asset_symbol TEXT NOT NULL DEFAULT 'SYP'").run();
+  }
   const missing=await db.prepare("SELECT u.id FROM users u LEFT JOIN member_codes m ON m.user_id=u.id WHERE m.user_id IS NULL").all();
   for(const row of (missing.results||[])){
     for(let attempt=0;attempt<8;attempt++){
@@ -575,17 +579,18 @@ const walletApi = async (request, env, url) => {
     if(Number(request.headers.get("content-length")||0)>1200000)return json({ok:false,error:"حجم الطلب أكبر من المسموح"},413);
     let form;try{form=await request.formData();}catch{return json({ok:false,error:"تعذر قراءة بيانات الإيداع"},400);}
     const amount=Number(form.get("amount")),file=form.get("proof");
-    if(!Number.isSafeInteger(amount)||amount<=0||amount>1000000000)return json({ok:false,error:"أدخل مبلغاً صحيحاً بالليرة"},400);
+    const amountMinor=Math.round(amount*100);
+    if(!Number.isFinite(amount)||amount<=0||amount>10000000||!Number.isSafeInteger(amountMinor)||amountMinor<=0)return json({ok:false,error:"أدخل مبلغاً صحيحاً بالدولار"},400);
     if(!file||typeof file.arrayBuffer!=="function"||file.size<1||file.size>850000)return json({ok:false,error:"أرفق صورة بحجم لا يتجاوز 850 كيلوبايت"},400);
     const mime=String(file.type||"").toLowerCase();
     if(!["image/jpeg","image/png","image/webp"].includes(mime))return json({ok:false,error:"الصورة يجب أن تكون JPG أو PNG أو WEBP"},400);
     const bytes=new Uint8Array(await file.arrayBuffer());
     const jpeg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255,png=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71,webp=String.fromCharCode(...bytes.subarray(0,4))==="RIFF"&&String.fromCharCode(...bytes.subarray(8,12))==="WEBP";
     if(!(mime==="image/jpeg"&&jpeg)&&!(mime==="image/png"&&png)&&!(mime==="image/webp"&&webp))return json({ok:false,error:"محتوى الصورة لا يطابق نوع الملف"},400);
-    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol='SYP'").bind(user.id).first();
-    if(!wallet)return json({ok:false,error:"محفظة الليرة غير موجودة"},409);
+    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol='USD'").bind(user.id).first();
+    if(!wallet)return json({ok:false,error:"محفظة الدولار غير موجودة"},409);
     const id=crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO deposit_requests(id,user_id,amount_minor,proof_base64,proof_mime,proof_name) VALUES(?,?,?,?,?,?)").bind(id,user.id,amount,bytesToBase64(bytes),mime,String(file.name||"proof").slice(0,120)).run();
+    await env.DB.prepare("INSERT INTO deposit_requests(id,user_id,amount_minor,asset_symbol,proof_base64,proof_mime,proof_name) VALUES(?,?,?,'USD',?,?,?)").bind(id,user.id,amountMinor,bytesToBase64(bytes),mime,String(file.name||"proof").slice(0,120)).run();
     return json({ok:true,requestId:id,status:"pending"});
   }
   if (url.pathname === "/api/wallet/withdrawal" && request.method === "POST") {
@@ -603,6 +608,41 @@ const walletApi = async (request, env, url) => {
     ]);
     if(!result?.[0]?.meta?.changes)return json({ok:false,error:"رصيد الليرة غير كافٍ"},409);
     return json({ok:true,requestId:id,status:"pending"});
+  }
+  if (url.pathname === "/api/wallet/exchange" && request.method === "POST") {
+    if(!requireSameOrigin(request,url))return json({ok:false,error:"طلب غير موثوق"},403);
+    let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
+    const direction=String(body.direction||"");
+    const amount=Number(body.amount);
+    if(!["USD_TO_SYP","SYP_TO_USD"].includes(direction)||!Number.isFinite(amount)||amount<=0||amount>10000000000){
+      return json({ok:false,error:"تحقق من اتجاه التحويل والمبلغ"},400);
+    }
+    const sourceSymbol=direction==="USD_TO_SYP"?"USD":"SYP";
+    const targetSymbol=direction==="USD_TO_SYP"?"SYP":"USD";
+    const sourceMinor=Math.round(amount*(sourceSymbol==="USD"?100:1));
+    if(!Number.isSafeInteger(sourceMinor)||sourceMinor<=0)return json({ok:false,error:"المبلغ خارج النطاق المقبول"},400);
+    const rateRow=await env.DB.prepare("SELECT rate FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first();
+    const rate=Number(rateRow?.rate||0);
+    if(!Number.isFinite(rate)||rate<=0)return json({ok:false,error:"سعر الصرف غير محدد من الإدارة بعد"},409);
+    const targetMinor=direction==="USD_TO_SYP"?Math.round(sourceMinor*rate/100):Math.round(sourceMinor/rate*100);
+    if(!Number.isSafeInteger(targetMinor)||targetMinor<=0||targetMinor>9007199254740991)return json({ok:false,error:"الناتج خارج النطاق المقبول"},400);
+    const [source,target]=await Promise.all([
+      env.DB.prepare("SELECT id,balance_minor AS balanceMinor FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,sourceSymbol).first(),
+      env.DB.prepare("SELECT id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,targetSymbol).first()
+    ]);
+    if(!source||!target)return json({ok:false,error:"إحدى المحافظ غير موجودة"},409);
+    const id=crypto.randomUUID(),now=new Date().toISOString();
+    const sourceLabel=sourceSymbol==="USD"?"دولار":"ليرة",targetLabel=targetSymbol==="USD"?"دولار":"ليرة";
+    const rateNote="تحويل عملة بسعر 1 دولار = "+rate+" ليرة";
+    const batch=await env.DB.batch([
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(sourceMinor,now,source.id,sourceMinor),
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND changes()=1 AND balance_minor<=9007199254740991-?").bind(targetMinor,now,target.id,targetMinor),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),source.id,sourceMinor,"exchange:"+id+":out",user.id,rateNote),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),target.id,targetMinor,"exchange:"+id+":in",user.id,rateNote)
+    ]);
+    if(!batch?.[0]?.meta?.changes)return json({ok:false,error:"رصيد "+sourceLabel+" غير كافٍ"},409);
+    if(!batch?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إضافة المبلغ إلى محفظة "+targetLabel},409);
+    return json({ok:true,sourceSymbol,targetSymbol,sourceMinor,targetMinor,rate});
   }
   if (url.pathname === "/api/wallet/transfer" && request.method === "POST") {
     if(!requireSameOrigin(request,url))return json({ok:false,error:"طلب غير موثوق"},403);
@@ -630,7 +670,7 @@ const walletApi = async (request, env, url) => {
   }
   if (url.pathname === "/api/wallet/finance-requests" && request.method === "GET") {
     const [deposits,withdrawals,transfers]=await Promise.all([
-      env.DB.prepare("SELECT id,amount_minor AS amount,status,created_at AS createdAt FROM deposit_requests WHERE user_id=? ORDER BY created_at DESC LIMIT 30").bind(user.id).all(),
+      env.DB.prepare("SELECT id,amount_minor AS amount,asset_symbol AS assetSymbol,status,created_at AS createdAt FROM deposit_requests WHERE user_id=? ORDER BY created_at DESC LIMIT 30").bind(user.id).all(),
       env.DB.prepare("SELECT id,amount_minor AS amount,status,payout_details AS payoutDetails,created_at AS createdAt FROM withdrawal_requests WHERE user_id=? ORDER BY created_at DESC LIMIT 30").bind(user.id).all(),
       env.DB.prepare("SELECT t.id,t.amount_minor AS amount,t.created_at AS createdAt,CASE WHEN t.sender_id=? THEN 'out' ELSE 'in' END AS direction,CASE WHEN t.sender_id=? THEN ur.display_name ELSE us.display_name END AS otherName,CASE WHEN t.sender_id=? THEN mr.code ELSE ms.code END AS otherCode FROM internal_transfers t JOIN users us ON us.id=t.sender_id JOIN users ur ON ur.id=t.recipient_id JOIN member_codes ms ON ms.user_id=us.id JOIN member_codes mr ON mr.user_id=ur.id WHERE t.sender_id=? OR t.recipient_id=? ORDER BY t.created_at DESC LIMIT 30").bind(user.id,user.id,user.id,user.id,user.id).all()
     ]);
@@ -639,7 +679,7 @@ const walletApi = async (request, env, url) => {
   if (url.pathname === "/api/admin/finance-requests" && request.method === "GET") {
     if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
     const [deposits,withdrawals]=await Promise.all([
-      env.DB.prepare("SELECT d.id,d.amount_minor AS amount,d.status,d.created_at AS createdAt,u.display_name AS displayName,u.email,m.code AS memberCode,d.proof_mime AS proofMime FROM deposit_requests d JOIN users u ON u.id=d.user_id JOIN member_codes m ON m.user_id=u.id ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 100").all(),
+      env.DB.prepare("SELECT d.id,d.amount_minor AS amount,d.asset_symbol AS assetSymbol,d.status,d.created_at AS createdAt,u.display_name AS displayName,u.email,m.code AS memberCode,d.proof_mime AS proofMime FROM deposit_requests d JOIN users u ON u.id=d.user_id JOIN member_codes m ON m.user_id=u.id ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 100").all(),
       env.DB.prepare("SELECT w.id,w.amount_minor AS amount,w.status,w.payout_details AS payoutDetails,w.created_at AS createdAt,u.display_name AS displayName,u.email,m.code AS memberCode FROM withdrawal_requests w JOIN users u ON u.id=w.user_id JOIN member_codes m ON m.user_id=u.id ORDER BY CASE w.status WHEN 'pending' THEN 0 ELSE 1 END,w.created_at DESC LIMIT 100").all()
     ]);
     return json({ok:true,deposits:deposits.results||[],withdrawals:withdrawals.results||[]});
@@ -657,14 +697,15 @@ const walletApi = async (request, env, url) => {
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const id=String(body.requestId||""),decision=String(body.decision||"");
     if(!id||!["approve","reject"].includes(decision))return json({ok:false,error:"بيانات المراجعة غير صحيحة"},400);
-    const row=await env.DB.prepare("SELECT user_id AS userId,amount_minor AS amount FROM deposit_requests WHERE id=? AND status='pending'").bind(id).first();
+    const row=await env.DB.prepare("SELECT user_id AS userId,amount_minor AS amount,asset_symbol AS assetSymbol FROM deposit_requests WHERE id=? AND status='pending'").bind(id).first();
     if(!row)return json({ok:false,error:"طلب الإيداع غير موجود أو تمت مراجعته"},409);
     if(decision==="reject"){
       const r=await env.DB.prepare("UPDATE deposit_requests SET status='rejected',reviewed_by=?,reviewed_at=? WHERE id=? AND status='pending'").bind(user.id,new Date().toISOString(),id).run();
       if(!r.meta?.changes)return json({ok:false,error:"تمت مراجعة الطلب مسبقاً"},409);
       return json({ok:true,status:"rejected"});
     }
-    const wallet=await env.DB.prepare("SELECT id FROM wallets WHERE user_id=? AND asset_id='syr-lira'").bind(row.userId).first();
+    const assetId=row.assetSymbol==="USD"?"usd-dollar":"syr-lira";
+    const wallet=await env.DB.prepare("SELECT id FROM wallets WHERE user_id=? AND asset_id=?").bind(row.userId,assetId).first();
     if(!wallet)return json({ok:false,error:"محفظة العضو غير موجودة"},409);
     const now=new Date().toISOString();
     const r=await env.DB.batch([
