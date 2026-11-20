@@ -375,7 +375,7 @@ const getReserveReferenceBounds = async (db, targetOverride = null) => {
   }
   const target=targetOverride===null?Number(row?.targetPriceMicro||current):Number(targetOverride);
   const refs=[current,target].filter(value=>Number.isSafeInteger(value)&&value>0);
-  if(!refs.length)throw new Error("تعذر تحديد السعر المرجعي للاحتياطي");
+  if(!refs.length){const open=await db.prepare("SELECT COUNT(*) AS count FROM paper_trades WHERE status='open'").first();if(Number(open?.count||0)>0)throw new Error("تعذر تحديد السعر المرجعي لصفقات مفتوحة");return {minReference:1,maxReference:1};}
   return {minReference:Math.min(...refs),maxReference:Math.max(...refs)};
 };
 
@@ -881,6 +881,7 @@ const walletApi = async (request, env, url) => {
     const current=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id='syr-usd-syp'").first();
     const fromPriceMicro=Number(current?.priceMicro||priceMicro);
     if(!Number.isSafeInteger(fromPriceMicro)||fromPriceMicro<=0)return json({ok:false,error:"تعذر قراءة السعر الحالي"},409);
+    await env.DB.prepare("INSERT OR IGNORE INTO market_prices(instrument_id,price_micro,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?)").bind(fromPriceMicro,user.id,now).run();
     const nextBounds=await getReserveReferenceBounds(env.DB,priceMicro),required=await reserveRequirements(env.DB,nextBounds);
     const requiredSyp=Number(required.SYP),requiredUsd=Number(required.USD);
     if(!Number.isSafeInteger(requiredSyp)||!Number.isSafeInteger(requiredUsd))return json({ok:false,error:"التغطية المطلوبة تتجاوز النطاق المحاسبي"},409);
