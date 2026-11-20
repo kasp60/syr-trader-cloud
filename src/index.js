@@ -267,13 +267,13 @@ const runScheduledMarketBots = async (db) => {
   for (const bot of (result.results || [])) {
     const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
     const noise=(bytes[0]/4294967295)*2-1;
-    const bps=Math.max(-2500,Math.min(2500,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
     const previous=Number(bot.priceMicro);
     const base=await db.prepare("SELECT rate FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first();
     const target=Number(base?.rate||0)*1000000;
     const reversion=target>0?Math.max(-300,Math.min(300,Math.round(((target-previous)/target)*1200))):0;
-    const boundedNoise=Math.max(-120,Math.min(120,Math.round(noise*Number(bot.volatilityBps))));
-    const next=Math.max(1,Math.round(previous*(1+(reversion+boundedNoise)/10000)));
+    // Apply the configured drift as well as volatility, while retaining the existing per-tick movement cap.
+    const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
+    const next=Math.max(1,Math.round(previous*(1+(reversion+boundedMove)/10000)));
     if(!Number.isSafeInteger(next)||next===previous)continue;
     const now=new Date().toISOString();
     const batch=await db.batch([
