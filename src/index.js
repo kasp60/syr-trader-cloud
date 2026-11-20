@@ -915,6 +915,35 @@ const authApi = async (request, env, url) => {
 
   if (url.pathname === "/api/auth/register" && request.method === "POST") {
     if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+    // Reuse the existing authentication limits table: cap account creation attempts per IP.
+    const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+    const registerKey = await sha256("register|" + clientIp);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS auth_login_limits (
+      login_key TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0,
+      window_started_at INTEGER NOT NULL, blocked_until INTEGER
+    )`).run();
+    await env.DB.prepare("DELETE FROM auth_login_limits WHERE window_started_at<? AND COALESCE(blocked_until,0)<?")
+      .bind(nowSeconds - 172800, nowSeconds).run();
+    const registerLimit = await env.DB.prepare(`INSERT INTO auth_login_limits
+      (login_key,attempts,window_started_at,blocked_until) VALUES (?,1,?,NULL)
+      ON CONFLICT(login_key) DO UPDATE SET
+        attempts=CASE WHEN auth_login_limits.blocked_until>? THEN auth_login_limits.attempts
+          WHEN auth_login_limits.window_started_at<=? THEN 1 ELSE auth_login_limits.attempts+1 END,
+        window_started_at=CASE WHEN auth_login_limits.blocked_until>? THEN auth_login_limits.window_started_at
+          WHEN auth_login_limits.window_started_at<=? THEN excluded.window_started_at ELSE auth_login_limits.window_started_at END,
+        blocked_until=CASE WHEN auth_login_limits.blocked_until>? THEN auth_login_limits.blocked_until
+          WHEN auth_login_limits.window_started_at<=? THEN NULL
+          WHEN auth_login_limits.attempts+1>=10 THEN ? ELSE auth_login_limits.blocked_until END
+      RETURNING attempts,blocked_until`).bind(
+        registerKey, nowSeconds, nowSeconds, nowSeconds - 900, nowSeconds,
+        nowSeconds - 900, nowSeconds, nowSeconds - 900, nowSeconds + 900
+      ).first();
+    if (Number(registerLimit?.blocked_until || 0) > nowSeconds) {
+      const retryAfter = Math.max(1, Number(registerLimit.blocked_until) - nowSeconds);
+      return json({ ok: false, error: "محاولات إنشاء حساب كثيرة؛ حاول بعد 15 دقيقة" }, 429,
+        { "retry-after": String(retryAfter) });
+    }
     let body;
     try { body = await readJson(request); } catch { return json({ ok: false, error: "Invalid request body" }, 400); }
     const email = String(body.email || "").trim().toLowerCase();
