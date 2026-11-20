@@ -149,7 +149,16 @@ const ensurePaperSchema = async (db) => {
       price_micro INTEGER NOT NULL CHECK(price_micro > 0), total_cents INTEGER NOT NULL CHECK(total_cents > 0),
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     )`),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_orders_user_created ON paper_orders(user_id,created_at)")
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_orders_user_created ON paper_orders(user_id,created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS paper_ledger (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      order_id TEXT NOT NULL UNIQUE REFERENCES paper_orders(id) ON DELETE RESTRICT,
+      entry_type TEXT NOT NULL CHECK(entry_type IN ('buy','sell')),
+      cash_delta_cents INTEGER NOT NULL, quantity_delta_micro INTEGER NOT NULL,
+      instrument_id TEXT NOT NULL REFERENCES market_instruments(id) ON DELETE RESTRICT,
+      price_micro INTEGER NOT NULL, created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_paper_ledger_user_created ON paper_ledger(user_id,created_at)")
   ]);
 };
 
@@ -279,6 +288,16 @@ const walletApi = async (request, env, url) => {
     return json({ok:true,priceMicro});
   }
 
+
+  if (url.pathname === "/api/paper/history" && request.method === "GET") {
+    const rows=await env.DB.prepare(`SELECT l.id,l.order_id AS orderId,l.entry_type AS side,
+      l.cash_delta_cents AS cashDeltaCents,l.quantity_delta_micro AS quantityDeltaMicro,
+      l.price_micro AS priceMicro,l.created_at AS createdAt,i.symbol,i.name
+      FROM paper_ledger l JOIN market_instruments i ON i.id=l.instrument_id
+      WHERE l.user_id=? ORDER BY l.created_at DESC LIMIT 100`).bind(user.id).all();
+    return json({ok:true,entries:rows.results||[]});
+  }
+
   if (url.pathname === "/api/paper/order" && request.method === "POST") {
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
     let body; try { body=await readJson(request); } catch { return json({ok:false,error:"بيانات الطلب غير صحيحة"},400); }
@@ -309,6 +328,11 @@ const walletApi = async (request, env, url) => {
     const now=new Date().toISOString(),orderId=crypto.randomUUID();
     const orderInsert=env.DB.prepare(`INSERT INTO paper_orders (id,user_id,instrument_id,side,quantity_micro,price_micro,total_cents)
       SELECT ?,?,?,?,?,?,? WHERE changes()=1`).bind(orderId,user.id,instrumentId,side,quantityMicro,instrument.priceMicro,totalCents);
+    const ledgerInsert=env.DB.prepare(`INSERT INTO paper_ledger
+      (id,user_id,order_id,entry_type,cash_delta_cents,quantity_delta_micro,instrument_id,price_micro,created_at)
+      SELECT ?,?,?,?,?,?,?,?,? WHERE changes()=1`).bind(crypto.randomUUID(),user.id,orderId,side,
+        side==="buy"?-totalCents:totalCents,side==="buy"?quantityMicro:-quantityMicro,
+        instrumentId,instrument.priceMicro,now);
     const statements=side==="buy"?[
       env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents-?,updated_at=? WHERE user_id=? AND cash_cents>=?")
         .bind(totalCents,now,user.id,totalCents),
@@ -317,13 +341,15 @@ const walletApi = async (request, env, url) => {
         ON CONFLICT(user_id,instrument_id) DO UPDATE SET quantity_micro=quantity_micro+excluded.quantity_micro
         WHERE quantity_micro<=9007199254740991-excluded.quantity_micro`)
         .bind(user.id,instrumentId,quantityMicro),
-      orderInsert
+      orderInsert,
+      ledgerInsert
     ]:[
       env.DB.prepare("UPDATE paper_positions SET quantity_micro=quantity_micro-? WHERE user_id=? AND instrument_id=? AND quantity_micro>=?")
         .bind(quantityMicro,user.id,instrumentId,quantityMicro),
       env.DB.prepare("UPDATE paper_accounts SET cash_cents=cash_cents+?,updated_at=? WHERE user_id=? AND cash_cents<=9007199254740991-? AND changes()=1")
         .bind(totalCents,now,user.id,totalCents),
-      orderInsert
+      orderInsert,
+      ledgerInsert
     ];
     let results;
     try { results=await env.DB.batch(statements); }
