@@ -32,6 +32,12 @@
     .notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
+    .trade-workspace{margin-top:20px}.trade-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.7fr);gap:16px}
+    .chart-panel{background:#0a1321;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
+    .trade-toolbar,.trade-tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0}.trade-toolbar select{max-width:220px}
+    .trade-tabs button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.trade-view{display:none}.trade-view.active{display:block}
+    .bot-pill{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:5px 9px;color:var(--muted)}.bot-pill.running{color:var(--accent);border-color:var(--accent)}
+    @media(max-width:760px){.trade-grid{grid-template-columns:1fr}.chart-panel svg{height:230px}}
   </style>
 </head>
 <body>
@@ -82,7 +88,23 @@
           <button type="button" id="logoutButton">تسجيل الخروج</button>
         </div>
         <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
-        <section id="paperMarketPanel" class="subpanel">
+        <section id="tradingWorkspace" class="subpanel trade-workspace">
+  <h3>التداول</h3>
+  <p class="muted">سوق محاكاة مستقل. بوتات الأسعار تعمل من الخادم كل دقيقة حتى عند إغلاق التطبيق. الأسعار ليست أسعاراً مباشرة من الأسواق العالمية.</p>
+  <div class="trade-tabs"><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button></div>
+  <div id="tradeTerminalView" class="trade-view active">
+    <div class="trade-grid">
+      <div><div class="trade-toolbar"><label for="chartInstrument">الأداة</label><select id="chartInstrument"></select><span id="chartLastPrice" class="bot-pill">—</span><span id="chartBotStatus" class="bot-pill">محاكاة السوق</span></div>
+        <div class="chart-panel"><div class="muted">مخطط حركة السعر · آخر 180 نقطة محفوظة</div><svg id="marketChart" viewBox="0 0 900 270" role="img" aria-label="مخطط حركة السعر"><text x="450" y="135" fill="#9aabc0" text-anchor="middle">بانتظار بيانات السعر</text></svg></div><p id="chartUpdated" class="muted">يتم حفظ حركة الأسعار في قاعدة البيانات.</p>
+      </div>
+      <div class="subpanel"><h3>صفقة تجريبية</h3><div class="account-line"><span>الرصيد الافتراضي</span><strong id="terminalCash">10,000.00 USD</strong></div>
+        <form id="terminalOrderForm"><label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء</option><option value="sell">بيع</option></select><label for="terminalQuantity">الكمية</label><input id="terminalQuantity" type="number" min="0.000001" step="0.000001" required><button class="primary" type="submit">تنفيذ الصفقة</button></form><div id="terminalMessage" class="message" role="status"></div>
+      </div>
+    </div>
+  </div>
+  <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>آخر الصفقات</h3><div id="terminalOrders" class="muted">—</div></div>
+</section>
+<section id="paperMarketPanel" class="subpanel">
           <h3>التداول التجريبي</h3>
           <p class="muted">رصيد افتراضي منفصل عن محافظك الحقيقية. الأسعار يحددها المدير وليست أسعار سوق مباشرة.</p>
           <div class="account-line"><span>الرصيد التجريبي بالدولار</span><strong id="paperCash">10000.00 USD</strong></div>
@@ -125,7 +147,12 @@
             <label for="instrumentName">اسم الأداة</label><input id="instrumentName" maxlength="60" required>
             <div class="form-actions"><button type="submit">إضافة أداة</button></div>
           </form>
-          <h3 style="margin-top:16px">الأدوات المسجلة</h3><div id="adminMarketInstruments" class="muted">جارٍ تحميل الأدوات...</div>
+          <h3 style="margin-top:16px">الأدوات المسجلة</h3><div id="adminMarketInstruments" class="muted">جارٍ تحميل الأدوات...</div><section class="subpanel"><h3>بوتات حركة السوق</h3>
+<p class="muted">توليد حركة سعر تلقائية على الخادم، كل دقيقة، بشكل مستقل عن جلسات المستخدمين.</p>
+<form id="marketBotForm"><label for="botInstrument">الأداة</label><select id="botInstrument" required></select>
+<label for="botVolatility">قوة التذبذب (نقاط أساس)</label><input id="botVolatility" type="number" min="1" max="2000" value="80" required>
+<label for="botDrift">الميل السعري (من -500 إلى 500 نقطة أساس)</label><input id="botDrift" type="number" min="-500" max="500" value="0" required>
+<div class="form-actions"><button type="submit">حفظ وتشغيل البوت</button><button type="button" id="stopBotButton">إيقاف البوت</button></div></form><div id="botAdminMessage" class="message" role="status"></div></section>
           <form id="marketPriceForm">
             <label for="priceInstrument">الأداة</label><select id="priceInstrument" required></select>
             <label for="marketPrice">السعر بالدولار</label><input id="marketPrice" type="number" min="0.000001" step="0.000001" required>
@@ -186,6 +213,7 @@
     loadLedger();
     loadPaperMarket();
     loadPaperHistory();
+    loadTradingChart();
     if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); }
     else $("adminPanel").classList.add("hidden");
   };
@@ -303,12 +331,14 @@
     try {
       const data=await api("/api/admin/market-instruments",{headers:{}});
       if(!data.instruments.length){container.textContent="لا توجد أدوات مسجلة.";return;}
-      data.instruments.forEach(item=>{
+      window.__syrBotSettings={};const botSelect=$("botInstrument");botSelect.replaceChildren();
+      data.instruments.filter(x=>x.isActive).forEach(x=>{const o=document.createElement("option");o.value=x.id;o.textContent=x.symbol+" · "+x.name;botSelect.appendChild(o);});
+      data.instruments.forEach(item=>{window.__syrBotSettings[item.id]=item;
         const row=document.createElement("div"); row.className="admin-wallet-row";
         const info=document.createElement("div");
         const title=document.createElement("strong"); title.textContent=item.symbol+" · "+item.name;
         const detail=document.createElement("div"); detail.className="muted";
-        detail.textContent=(item.isActive?"نشطة":"موقوفة")+" · "+(item.priceMicro?(Number(item.priceMicro)/1000000).toLocaleString("en-US")+" USD":"بلا سعر");
+        detail.textContent=(item.isActive?"نشطة":"موقوفة")+" · "+(item.priceMicro?(Number(item.priceMicro)/1000000).toLocaleString("en-US")+" USD":"بلا سعر")+" · بوت "+(item.botEnabled?"يعمل بالخلفية":"متوقف");
         info.append(title,detail);
         const action=document.createElement("button"); action.type="button";
         action.textContent=item.isActive?"إيقاف":"تفعيل";
@@ -328,17 +358,25 @@
     try {
       const data = await api("/api/market/board", { headers: {} });
       $("paperCash").textContent = (Number(data.cashCents || 0) / 100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " USD";
-      const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument");
-      market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren();
+      const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument"), chartSelect=$("chartInstrument");
+      market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren(); chartSelect.replaceChildren();
       data.market.forEach(item => {
         const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" USD" : "السعر غير محدد";
         const updated = item.updatedAt ? "آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar") : "لم يحدد المدير سعراً بعد";
         addTextRow(market,item.symbol+" · "+item.name,price+" · "+updated+" · سعر يدوي وليس مباشراً");
         const opt=document.createElement("option"); opt.value=item.id; opt.textContent=item.symbol+" · "+item.name;
         tradeSelect.appendChild(opt);
-        const adminOpt=opt.cloneNode(true); adminSelect.appendChild(adminOpt);
+        const adminOpt=opt.cloneNode(true); adminSelect.appendChild(adminOpt); chartSelect.appendChild(opt.cloneNode(true));
       });
       if(!data.market.length) market.textContent="لا توجد أدوات سوق بعد. يمكن للمدير إضافتها من لوحة الإدارة.";
+      $("terminalCash").textContent=$("paperCash").textContent;
+      if(chartSelect.value) await loadTradingChart();
+      const terminalPositions=$("terminalPositions");terminalPositions.replaceChildren();
+      if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
+      else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
+      const terminalOrders=$("terminalOrders");terminalOrders.replaceChildren();
+      if(!data.orders.length)terminalOrders.textContent="لا توجد صفقات منفذة.";
+      else data.orders.forEach(o=>addTextRow(terminalOrders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol,(Number(o.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" · "+(Number(o.totalCents)/100).toFixed(2)+" USD"));
       const positions=$("paperPositions"); positions.replaceChildren();
       if(!data.positions.length) positions.textContent="لا توجد مراكز تجريبية مفتوحة.";
       else data.positions.forEach(p=>addTextRow(positions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
@@ -351,6 +389,33 @@
       });
     } catch(error) { $("paperMarketList").textContent=error.message; }
   };
+  const drawMarketChart = points => {
+    const svg=$("marketChart");svg.replaceChildren();const ns="http://www.w3.org/2000/svg";
+    const el=(tag,attrs)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;};
+    [45,100,155,210].forEach(y=>svg.appendChild(el("line",{x1:30,y1:y,x2:870,y2:y,stroke:"#26364c","stroke-dasharray":"4 6"})));
+    if(!points.length){const t=el("text",{x:450,y:135,fill:"#9aabc0","text-anchor":"middle"});t.textContent="لا توجد حركة مسجلة بعد";svg.appendChild(t);return;}
+    const vals=points.map(p=>Number(p.priceMicro)/1000000),lo=Math.min(...vals),hi=Math.max(...vals),range=Math.max(hi-lo,Math.abs(hi)*0.0001,0.000001);
+    const coords=vals.map((v,i)=>[30+i*840/Math.max(1,vals.length-1),225-(v-lo)/range*180]);
+    const d=coords.map((p,i)=>(i?"L":"M")+p[0].toFixed(2)+" "+p[1].toFixed(2)).join(" ");
+    svg.appendChild(el("path",{d,fill:"none",stroke:"#36c9a0","stroke-width":"3","stroke-linejoin":"round","stroke-linecap":"round"}));
+    const last=coords[coords.length-1];svg.appendChild(el("circle",{cx:last[0],cy:last[1],r:5,fill:"#36c9a0"}));
+    const label=el("text",{x:35,y:25,fill:"#9aabc0","font-size":"13"});label.textContent=hi.toLocaleString("en-US",{maximumFractionDigits:6});svg.appendChild(label);
+  };
+  const loadTradingChart = async () => {
+    const id=$("chartInstrument")?.value;if(!id)return;
+    try{const [chart,board]=await Promise.all([api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),api("/api/market/board",{headers:{}})]);
+      drawMarketChart(chart.points||[]);const item=board.market.find(x=>x.id===id);
+      if(item?.priceMicro)$("chartLastPrice").textContent=(Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" USD";
+      if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
+      const bot=window.__syrBotSettings?.[id];$("chartBotStatus").textContent=bot?.botEnabled?"البوت يعمل بالخلفية":"محاكاة السوق";$("chartBotStatus").classList.toggle("running",!!bot?.botEnabled);
+    }catch(error){$("chartUpdated").textContent=error.message;}
+  };
+  document.querySelectorAll("[data-trade-tab]").forEach(button=>button.addEventListener("click",()=>{const v=button.dataset.tradeTab;document.querySelectorAll("[data-trade-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));$("tradeTerminalView").classList.toggle("active",v==="terminal");$("tradePositionsView").classList.toggle("active",v==="positions");}));
+  $("chartInstrument").addEventListener("change",loadTradingChart);
+  $("marketBotForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("marketBotForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:true,volatilityBps:Number($("botVolatility").value),driftBps:Number($("botDrift").value)})});message($("botAdminMessage"),"تم تشغيل البوت على الخادم.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
+  $("stopBotButton").addEventListener("click",async()=>{const b=$("stopBotButton");b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:false,volatilityBps:Number($("botVolatility").value||80),driftBps:Number($("botDrift").value||0)})});message($("botAdminMessage"),"تم إيقاف البوت.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
+  $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/paper/order",{method:"POST",body:JSON.stringify({instrumentId:$("chartInstrument").value,side:$("terminalSide").value,quantity:Number($("terminalQuantity").value)})});$("terminalQuantity").value="";message($("terminalMessage"),"تم تنفيذ الصفقة التجريبية.","success");await loadPaperMarket();await loadPaperHistory();await loadTradingChart();}catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
+
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
