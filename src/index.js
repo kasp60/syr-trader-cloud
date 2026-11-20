@@ -333,7 +333,7 @@ const runScheduledMarketBots = async (db) => {
 
     // Net open customer exposure is measured in SYP notional. A net-long book
     // applies downward pressure; a net-short book applies upward pressure.
-    const positions=await db.prepare("SELECT direction,quantity_micro AS quantityMicro FROM paper_trades WHERE instrument_id=? AND status='open'").bind(bot.instrumentId).all();
+    const positions=await db.prepare("SELECT direction,quantity_micro AS quantityMicro,liquidation_price_micro AS liquidationPriceMicro FROM paper_trades WHERE instrument_id=? AND status='open'").bind(bot.instrumentId).all();
     let longNotional=0n,shortNotional=0n;
     for(const position of (positions.results||[])){
       const notional=BigInt(position.quantityMicro)*BigInt(previous)/1000000000000n;
@@ -345,14 +345,49 @@ const runScheduledMarketBots = async (db) => {
     const imbalanceBps=totalNotional>0n?Number(netNotional*10000n/totalNotional):0;
     const imbalancePressureBps=Math.round(-imbalanceBps*MARKET_IMBALANCE_PRESSURE_BPS/10000);
 
+    // One scheduled volatility pulse per UTC day. Its timing and direction are
+    // derived only from the date, never from customer wins, losses, or positions.
+    const utcNow=new Date();
+    const dayKey=utcNow.toISOString().slice(0,10);
+    let dayHash=0;
+    for(const char of dayKey)dayHash=(dayHash*31+char.charCodeAt(0))>>>0;
+    const eventStartMinute=360+(dayHash%720);
+    const minuteOfDay=utcNow.getUTCHours()*60+utcNow.getUTCMinutes();
+    const eventTick=minuteOfDay-eventStartMinute;
+    const eventDirection=(dayHash&1)?1:-1;
+    const pulse=[15,20,15,-10,-15,-15,-10,0];
+    const dailyEventBps=eventTick>=0&&eventTick<pulse.length?pulse[eventTick]*eventDirection:0;
+
     const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
     const noise=(bytes[0]/4294967295)*2-1;
     const reversion=reference>0?Math.max(-300,Math.min(300,Math.round(((reference-previous)/reference)*1200))):0;
     const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
-    const rawNext=Math.max(1,Math.round(previous*(1+(reversion+boundedMove+imbalancePressureBps)/10000)));
+    const rawNext=Math.max(1,Math.round(previous*(1+(reversion+boundedMove+imbalancePressureBps+dailyEventBps)/10000)));
     const lowerBound=Math.max(1,Math.floor(reference*(10000-MARKET_MAX_DEVIATION_BPS)/10000));
     const upperBound=Math.max(lowerBound,Math.ceil(reference*(10000+MARKET_MAX_DEVIATION_BPS)/10000));
-    const next=Math.max(lowerBound,Math.min(upperBound,rawNext));
+    let next=Math.max(lowerBound,Math.min(upperBound,rawNext));
+
+    // During the scheduled pulse only, avoid pushing an existing position
+    // through its liquidation quote; normal market risk rules remain unchanged.
+    if(dailyEventBps<0){
+      let safeLower=lowerBound;
+      for(const position of (positions.results||[])){
+        if(position.direction!=="long")continue;
+        const liquidation=BigInt(position.liquidationPriceMicro);
+        const threshold=((liquidation+1n)*10000n+9989n)/9990n;
+        if(threshold>BigInt(safeLower))safeLower=Number(threshold);
+      }
+      next=Math.max(next,Math.min(upperBound,safeLower));
+    }else if(dailyEventBps>0){
+      let safeUpper=upperBound;
+      for(const position of (positions.results||[])){
+        if(position.direction!=="short")continue;
+        const liquidation=BigInt(position.liquidationPriceMicro);
+        const threshold=((liquidation-1n)*10000n)/10010n;
+        if(threshold<BigInt(safeUpper))safeUpper=Number(threshold);
+      }
+      next=Math.min(next,Math.max(lowerBound,safeUpper));
+    }
     if(!Number.isSafeInteger(next)||next<=0||next===previous)continue;
     const now=new Date().toISOString();
     const batch=await db.batch([
