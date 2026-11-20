@@ -353,7 +353,7 @@ const walletApi = async (request, env, url) => {
 
 
   if (url.pathname === "/api/market/chart" && request.method === "GET") {
-    const rows=await env.DB.prepare("SELECT price_micro AS priceMicro,created_at AS createdAt,source FROM market_price_history WHERE instrument_id='syr-usd-syp' ORDER BY created_at DESC LIMIT 180").all();
+    const rows=await env.DB.prepare("SELECT price_micro AS priceMicro,created_at AS createdAt,source FROM market_price_history WHERE instrument_id='syr-usd-syp' ORDER BY created_at DESC LIMIT 1440").all();
     return json({ok:true,points:(rows.results||[]).reverse()});
   }
   if (url.pathname === "/api/market/board" && request.method === "GET") {
