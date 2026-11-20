@@ -723,6 +723,7 @@ class MainActivity : Activity() {
                 val users = request("GET", "/api/admin/users", null, cookie)
                 val finance = request("GET", "/api/admin/finance-requests", null, cookie)
                 val reserve = request("GET", "/api/admin/platform-reserve", null, cookie)
+                val market = request("GET", "/api/admin/market-instruments", null, cookie)
                 runOnUiThread {
                     content.removeAllViews()
                     val summary = card()
@@ -769,6 +770,40 @@ class MainActivity : Activity() {
                         line.gravity = Gravity.RIGHT
                         line.setPadding(0, dp(8), 0, dp(4))
                         content.addView(line, match())
+                    }
+                    val marketTitle = text("إدارة سعر السوق", 17, teal, true)
+                    marketTitle.gravity = Gravity.RIGHT
+                    marketTitle.setPadding(0, dp(18), 0, dp(8))
+                    content.addView(marketTitle, match())
+                    val instruments = market.optJSONArray("instruments")
+                    if (instruments != null) for (i in 0 until instruments.length()) {
+                        val instrument = instruments.optJSONObject(i) ?: continue
+                        val instrumentId = instrument.optString("id")
+                        val currentPrice = instrument.optLong("priceMicro") / 1000000.0
+                        val label = text("${instrument.optString("symbol")} • السعر الحالي: ${String.format("%.2f", currentPrice)} ليرة", 13, Color.WHITE)
+                        label.gravity = Gravity.RIGHT
+                        content.addView(label, match())
+                        val newPrice = input("السعر الجديد بالليرة", false)
+                        newPrice.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                        content.addView(newPrice, fieldParams())
+                        val updatePrice = actionButton("اعتماد السعر")
+                        content.addView(updatePrice, fieldParams())
+                        updatePrice.setOnClickListener {
+                            val value = newPrice.text.toString().trim().toDoubleOrNull()
+                            if (value == null || value <= 0) {
+                                android.widget.Toast.makeText(this@MainActivity, "أدخل سعراً صحيحاً", android.widget.Toast.LENGTH_LONG).show()
+                            } else {
+                                updatePrice.isEnabled = false
+                                executor.execute {
+                                    try {
+                                        request("POST", "/api/admin/market-price", JSONObject().put("instrumentId", instrumentId).put("price", value).toString(), cookie)
+                                        runOnUiThread { loadAdmin(cookie) }
+                                    } catch (e: Exception) {
+                                        runOnUiThread { updatePrice.isEnabled = true; updatePrice.text = e.message ?: "تعذر تحديث السعر" }
+                                    }
+                                }
+                            }
+                        }
                     }
                     val financeTitle = text("آخر الطلبات المالية", 17, teal, true)
                     financeTitle.gravity = Gravity.RIGHT
