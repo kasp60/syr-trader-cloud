@@ -486,6 +486,11 @@ const walletApi = async (request, env, url) => {
     const marginAmount=Number(body.margin),leverage=Number(body.leverage);
     if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||!Number.isFinite(marginAmount)||marginAmount<=0||marginAmount>1000000000000||!Number.isInteger(leverage)||leverage<1||leverage>20)
       return json({ok:false,error:"أدخل مبلغ الهامش بشكل صحيح وحدد رافعة من 1x إلى 20x"},400);
+    const hasValidPrecision=direction==="long"
+      ? Number.isSafeInteger(marginAmount)
+      : Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
+    if(!hasValidPrecision)
+      return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
     const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
     const marginAssetSymbol=direction==="long"?"SYP":"USD";
