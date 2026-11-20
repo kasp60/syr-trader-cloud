@@ -141,7 +141,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
                 }
-                listOf("الرئيسية", "المحفظة", "السوق", "الصفقات").forEachIndexed { index, label ->
+                listOf("الرئيسية", "المحفظة", "السوق", "الصفقات", "تداول").forEachIndexed { index, label ->
                     val b = Button(this@MainActivity).apply {
                         text = label
                         isAllCaps = false
@@ -159,6 +159,7 @@ class MainActivity : Activity() {
                             1 -> loadWallet(cookie)
                             2 -> loadMarket(cookie)
                             3 -> loadPositions(cookie)
+                            4 -> loadTrading(cookie)
                         }
                     }
                 }
@@ -317,6 +318,80 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun loadTrading(cookie: String) {
+        val content = dashboardContent() ?: return
+        content.removeAllViews()
+        content.addView(text("جارٍ تحميل بيانات التداول...", 14, muted), match())
+        executor.execute {
+            try {
+                val board = request("GET", "/api/market/board", null, cookie)
+                runOnUiThread {
+                    content.removeAllViews()
+                    val market = board.optJSONArray("market")
+                    val instrument = market?.optJSONObject(0)
+                    if (instrument == null || instrument.optString("id").isBlank()) {
+                        showError(content, "السوق غير متاح حالياً")
+                        return@runOnUiThread
+                    }
+                    val card = card()
+                    content.addView(card, match())
+                    val title = text("فتح صفقة داخلية", 19, teal, true)
+                    title.gravity = Gravity.RIGHT
+                    card.addView(title, match())
+                    val disclaimer = text("هذا تداول محاكاة داخل المنصة. الشراء هامشه بالليرة والبيع هامشه بالدولار.", 12, muted)
+                    disclaimer.gravity = Gravity.RIGHT
+                    disclaimer.setPadding(0, dp(8), 0, dp(16))
+                    card.addView(disclaimer, match())
+                    val price = instrument.optLong("priceMicro") / 1000000.0
+                    val priceView = text("${instrument.optString("symbol")}  •  ${String.format("%.2f", price)} ليرة", 17, Color.WHITE, true)
+                    priceView.gravity = Gravity.RIGHT
+                    card.addView(priceView, match())
+                    val marginLabel = fieldLabel("مبلغ الهامش (شراء: ليرة صحيحة / بيع: دولار)")
+                    marginLabel.setPadding(0, dp(16), 0, dp(8))
+                    card.addView(marginLabel, match())
+                    val margin = input("مثال: 100000", false)
+                    margin.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    card.addView(margin, fieldParams())
+                    card.addView(fieldLabel("الرافعة المالية (من 1 إلى 20)"))
+                    val leverage = input("1", false)
+                    leverage.setText("1")
+                    leverage.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                    card.addView(leverage, fieldParams())
+                    val result = text("أدخل الهامش والرافعة ثم اختر شراء أو بيع.", 12, muted)
+                    result.gravity = Gravity.CENTER
+                    result.setPadding(0, dp(8), 0, dp(12))
+                    card.addView(result, match())
+                    fun submit(direction: String, button: Button) {
+                        val amount = margin.text.toString().trim().toDoubleOrNull()
+                        val lev = leverage.text.toString().trim().toIntOrNull()
+                        if (amount == null || amount <= 0 || lev == null || lev !in 1..20 || (direction == "long" && amount % 1.0 != 0.0)) {
+                            result.text = "تحقق من مبلغ الهامش والرافعة؛ شراء الليرة يجب أن يكون عدداً صحيحاً."
+                            return
+                        }
+                        button.isEnabled = false
+                        result.text = "جارٍ إرسال أمر الصفقة..."
+                        executor.execute {
+                            try {
+                                val payload = JSONObject().put("instrumentId", instrument.optString("id")).put("direction", direction).put("margin", amount).put("leverage", lev)
+                                val response = request("POST", "/api/paper/trade-open", payload.toString(), cookie)
+                                runOnUiThread { result.text = "تم فتح الصفقة. رقمها: ${response.optString("tradeId")}"; button.isEnabled = true }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.text = e.message ?: "تعذر فتح الصفقة"; button.isEnabled = true }
+                            }
+                        }
+                    }
+                    val buy = actionButton("شراء — هامش بالليرة")
+                    card.addView(buy, fieldParams())
+                    buy.setOnClickListener { submit("long", buy) }
+                    val sell = actionButton("بيع — هامش بالدولار")
+                    card.addView(sell, fieldParams())
+                    sell.setOnClickListener { submit("short", sell) }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { content.removeAllViews(); showError(content, e.message) }
+            }
+        }
+    }
     private fun loadPositions(cookie: String) {
         val content = dashboardContent() ?: return
         content.removeAllViews()
