@@ -293,6 +293,7 @@ const MARKET_IMBALANCE_PRESSURE_BPS = 25; // Maximum directional pressure per sc
 
 const runScheduledMarketBots = async (db) => {
   await ensurePaperSchema(db);
+  await ensureFinanceSchema(db);
   const result = await db.prepare(`SELECT b.instrument_id AS instrumentId,b.volatility_bps AS volatilityBps,
     b.drift_bps AS driftBps,p.price_micro AS priceMicro,t.target_price_micro AS targetPriceMicro,
     t.from_price_micro AS fromPriceMicro,t.transition_started_at AS transitionStartedAt,
@@ -663,22 +664,24 @@ const walletApi = async (request, env, url) => {
     const marginAmount=Number(body.margin),leverage=Number(body.leverage);
     if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||!Number.isFinite(marginAmount)||marginAmount<=0||marginAmount>1000000000000||!Number.isInteger(leverage)||leverage<1||leverage>20)
       return json({ok:false,error:"أدخل مبلغ الهامش بشكل صحيح وحدد رافعة من 1x إلى 20x"},400);
-    const hasValidPrecision=direction==="long"
-      ? Number.isSafeInteger(marginAmount)
-      : Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
-    if(!hasValidPrecision)
-      return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
+    const hasValidPrecision=direction==="long"?Number.isSafeInteger(marginAmount):Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
+    if(!hasValidPrecision)return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
     const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
     const marginAssetSymbol=direction==="long"?"SYP":"USD";
     const marginMinor=BigInt(Math.round(marginAmount*(direction==="long"?1:100)));
     const entry=marketQuote(instrument.priceMicro,direction==="long"?"ask":"bid"),lev=BigInt(leverage);
-    const quantityBig=direction==="long"
-      ? (marginMinor*lev*1000000000000n+entry/2n)/entry
-      : marginMinor*lev*10000n;
+    const quantityBig=direction==="long"?(marginMinor*lev*1000000000000n+entry/2n)/entry:marginMinor*lev*10000n;
     if(marginMinor<=0n||marginMinor>9007199254740991n||quantityBig<=0n||quantityBig>9007199254740991n)
       return json({ok:false,error:"قيمة الهامش أو حجم الصفقة خارج النطاق"},400);
-    const quantityMicro=Number(quantityBig),marginCents=Number(marginMinor);
+    const lock=tradeReserveLock(direction,quantityBig,entry,await getReserveReferenceBounds(env.DB));
+    if(lock<0n||lock>9007199254740991n)return json({ok:false,error:"تعذر حساب تغطية الصفقة"},409);
+    await syncPlatformReserve(env.DB);
+    const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
+    const balance=BigInt(reserve?.balanceMinor||0),required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0);
+    if(required+lock>balance||reserved!==(required<balance?required:balance))
+      return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±0.5%. يلزم تمويل الاحتياطي أولاً."},409);
+    const quantityMicro=Number(quantityBig),marginCents=Number(marginMinor),reserveLock=Number(lock);
     const liquidationPriceMicro=Number((direction==="long"?entry*BigInt(leverage-1)/BigInt(leverage):entry*BigInt(leverage+1)/BigInt(leverage))||1n);
     const now=new Date().toISOString(),tradeId=crypto.randomUUID();
     await env.DB.batch([
@@ -688,14 +691,18 @@ const walletApi = async (request, env, url) => {
     const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,marginAssetSymbol).first();
     if(!wallet)return json({ok:false,error:"محفظة العملة المطلوبة غير موجودة"},409);
     const results=await env.DB.batch([
-      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=?").bind(marginCents,now,wallet.id,marginCents),
+      env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=required_minor+?,reserved_minor=reserved_minor+?,updated_at=? WHERE asset_symbol=? AND required_minor=? AND reserved_minor=? AND balance_minor-reserved_minor>=?").bind(reserveLock,reserveLock,now,marginAssetSymbol,Number(required),Number(reserved),reserveLock),
+      env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=? AND changes()=1").bind(marginCents,now,wallet.id,marginCents),
       env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?, 'open',? WHERE changes()=1").bind(tradeId,user.id,instrumentId,direction,quantityMicro,Number(entry),leverage,marginCents,marginAssetSymbol,liquidationPriceMicro,now),
-      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع")+" تجريبية",tradeId)
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع"),tradeId)
     ]);
-    if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
-    return json({ok:true,tradeId,direction,marginAmount,quantity:Number(quantityMicro)/1000000,leverage,marginCents,marginAssetSymbol,entryPriceMicro:Number(entry),liquidationPriceMicro});
+    if(!results?.[2]?.meta?.changes){
+      await syncPlatformReserve(env.DB);
+      if(!results?.[0]?.meta?.changes)return json({ok:false,error:"احتياطي المنصة غير كافٍ أو تغيرت التغطية المطلوبة. لا يمكن فتح صفقة جديدة حالياً."},409);
+      return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
+    }
+    return json({ok:true,tradeId,direction,marginAmount,quantity:Number(quantityMicro)/1000000,leverage,marginCents,marginAssetSymbol,entryPriceMicro:Number(entry),liquidationPriceMicro,reserveLockedMinor:reserveLock});
   }
-
 
   if (url.pathname === "/api/paper/limit-order" && request.method === "POST") {
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
