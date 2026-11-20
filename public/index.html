@@ -163,7 +163,10 @@
       data.entries.forEach((entry) => {
         const label = entry.type === "credit" ? "إضافة" : entry.type === "debit" ? "خصم" : "تسوية";
         const date = new Date(entry.createdAt).toLocaleString("ar");
-        addTextRow(container, label + " · " + date, Number(entry.amountMinor).toLocaleString("en-US"));
+        const divisor = entry.symbol === "USD" ? 100 : 1;
+        const currency = entry.symbol === "USD" ? "دولار" : "ليرة";
+        addTextRow(container, label + " · " + date,
+          (Number(entry.amountMinor) / divisor).toLocaleString("en-US", {minimumFractionDigits: entry.symbol === "USD" ? 2 : 0, maximumFractionDigits: 2}) + " " + currency);
       });
     } catch (error) { container.textContent = error.message; }
   };
@@ -268,6 +271,11 @@
     } finally {
       button.disabled = false;
     }
+  });
+  $("targetWallet").addEventListener("change", () => {
+    const usd = $("targetWallet").selectedOptions[0]?.dataset.symbol === "USD";
+    $("adjustAmount").step = usd ? "0.01" : "1";
+    $("adjustAmount").min = usd ? "0.01" : "1";
   });
   $("adjustForm").addEventListener("submit", async (event) => {
     event.preventDefault();
