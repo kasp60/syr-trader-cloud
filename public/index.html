@@ -160,7 +160,15 @@
       .chart-controls .chart-control-label{font-size:13px;color:#eaecef}
       .chart-panel svg{overflow:visible}
     }
-</style>
+
+    /* Keep chart timeframe controls in their own row below the main navigation. */
+    @media(max-width:760px){
+      .app-nav{margin-bottom:52px!important}
+      #tradingWorkspace>.chart-controls{position:relative;z-index:1;display:flex;clear:both;width:100%;margin-top:30px!important;margin-bottom:18px;padding:14px 8px 12px;row-gap:10px;border-top:1px solid #2b3139}
+    }
+    .trade-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+    #chartLastPrice{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:7px 14px;border:1px solid rgba(53,227,193,.55);border-radius:9px;background:linear-gradient(135deg,rgba(18,91,78,.42),rgba(17,24,32,.96));color:#55e9c8;font-size:clamp(16px,2vw,20px);font-weight:900;line-height:1.25;white-space:nowrap;font-variant-numeric:tabular-nums;box-shadow:inset 0 0 0 1px rgba(53,227,193,.08)}
+  </style>
 </head>
 <body>
   <header><div class="brand">SYR <span>TRADER</span><small class="brand-powered">Powered by <strong>Kamash</strong></small></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
@@ -823,7 +831,7 @@
       if(Number.isFinite(entry)&&entry>=min&&entry<=max){const yy=y(entry);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#f6c85f","stroke-width":1.4,"stroke-dasharray":"7 5","opacity":.9}));addText(right-4,yy-5,"دخول #"+(index+1)+" "+fmt(entry),"end",10,"#f6c85f");}
       if(Number.isFinite(liquidation)&&liquidation>=min&&liquidation<=max){const yy=y(liquidation);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#ff7185","stroke-width":1.5,"stroke-dasharray":"4 4","opacity":.95}));addText(right-4,yy+12,"تصفية #"+(index+1)+" "+fmt(liquidation),"end",10,"#ff8a9a");}
     });
-    const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.8,"stroke-dasharray":"6 4"}));const priceTagY=Math.max(top+2,Math.min(bottom-34,lastY-17));svg.appendChild(el("rect",{x:right-190,y:priceTagY,width:190,height:34,rx:6,fill:"#35e3c1",stroke:"#d4fff6","stroke-width":1.5}));const priceTag=el("text",{x:right-10,y:priceTagY+23,fill:"#071b19","font-size":18,"font-weight":900,"text-anchor":"end"});priceTag.textContent=fmt(last)+" ليرة";svg.appendChild(priceTag);
+    const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.5,"stroke-dasharray":"6 4","opacity":.8}));
     addText(left,bottom+25,new Date(candles[0].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"start",11);addText(right,bottom+25,new Date(candles[candles.length-1].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"end",11);
     addText(left,top-16,"السعر (ليرة)","start",12);addText(left,548,"RSI (14)","start",12);
     const rsiValues=[];for(let i=0;i<vals.length;i++){if(i<14){rsiValues.push(null);continue;}let gains=0,losses=0;for(let j=i-13;j<=i;j++){const d=vals[j]-vals[j-1];if(d>0)gains+=d;else losses-=d;}const avgG=gains/14,avgL=losses/14;rsiValues.push(avgL===0?100:100-100/(1+avgG/avgL));}
