@@ -53,7 +53,7 @@
     .chart-controls button{background:#181d25;border:1px solid #343b46;border-radius:5px;padding:7px 11px;color:#c5cbd3}
     .chart-controls button[aria-pressed="true"]{background:#f0b90b;color:#111;border-color:#f0b90b}
     .chart-stats>div,.chart-indicators>div{background:#111820;border:1px solid #2b3139;border-radius:6px}
-    .chart-stats strong,.chart-indicators strong{color:#eaecef}
+    .chart-stats strong,.chart-indicators strong{color:#eaecef}\n    .chart-stats>div:first-child{background:linear-gradient(135deg,rgba(18,91,78,.5),rgba(17,24,32,.98));border-color:rgba(53,227,193,.55);box-shadow:inset 0 0 0 1px rgba(53,227,193,.08)}\n    .chart-stats>div:first-child strong{font-size:clamp(20px,2.4vw,27px);font-weight:900;color:#35e3c1;letter-spacing:.2px}\n
     .chart-legend{color:#aeb6c2}
     .chart-footnote{color:#848e9c}
     .trade-toolbar{padding:8px 0;border-bottom:1px solid #2b3139}
@@ -815,7 +815,7 @@
       if(Number.isFinite(entry)&&entry>=min&&entry<=max){const yy=y(entry);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#f6c85f","stroke-width":1.4,"stroke-dasharray":"7 5","opacity":.9}));addText(right-4,yy-5,"دخول #"+(index+1)+" "+fmt(entry),"end",10,"#f6c85f");}
       if(Number.isFinite(liquidation)&&liquidation>=min&&liquidation<=max){const yy=y(liquidation);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#ff7185","stroke-width":1.5,"stroke-dasharray":"4 4","opacity":.95}));addText(right-4,yy+12,"تصفية #"+(index+1)+" "+fmt(liquidation),"end",10,"#ff8a9a");}
     });
-    const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.5}));addText(right,lastY-9,fmt(last)+" ليرة","end",13,"#35e3c1");
+    const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.8,"stroke-dasharray":"6 4"}));const priceTagY=Math.max(top+2,Math.min(bottom-30,lastY-14));svg.appendChild(el("rect",{x:right-142,y:priceTagY,width:142,height:28,rx:5,fill:"#35e3c1",stroke:"#b9fff0","stroke-width":1}));const priceTag=el("text",{x:right-9,y:priceTagY+19,fill:"#071b19","font-size":15,"font-weight":800,"text-anchor":"end"});priceTag.textContent=fmt(last)+" ليرة";svg.appendChild(priceTag);
     addText(left,bottom+25,new Date(candles[0].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"start",11);addText(right,bottom+25,new Date(candles[candles.length-1].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"end",11);
     addText(left,top-16,"السعر (ليرة)","start",12);addText(left,548,"RSI (14)","start",12);
     const rsiValues=[];for(let i=0;i<vals.length;i++){if(i<14){rsiValues.push(null);continue;}let gains=0,losses=0;for(let j=i-13;j<=i;j++){const d=vals[j]-vals[j-1];if(d>0)gains+=d;else losses-=d;}const avgG=gains/14,avgL=losses/14;rsiValues.push(avgL===0?100:100-100/(1+avgG/avgL));}
