@@ -10,7 +10,7 @@
     :root{color-scheme:dark;--bg:#101d33;--panel:#29496b;--line:#547da5;--text:#ffffff;--muted:#d5e6f7;--accent:#27f0bd;--danger:#ff747f}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#245b83 0,transparent 42%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
     header{display:flex;align-items:center;justify-content:space-between;padding:18px max(5vw,18px);border-bottom:1px solid var(--line)}
-    .brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}.status{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:7px 11px;border-radius:30px}
+    .brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}.brand-powered{display:block;margin-top:3px;font-size:10px;font-weight:600;letter-spacing:.12em;color:#aebed2;text-align:right}.brand-powered strong{color:#35e3c1;font-weight:800}.status{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:7px 11px;border-radius:30px}
     main{max-width:1080px;margin:42px auto;padding:0 20px}.eyebrow{color:var(--accent);font-size:13px;font-weight:700}
     h1{font-size:clamp(28px,5vw,46px);margin:10px 0}.intro{color:var(--muted);line-height:1.9;max-width:700px}
     .layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(290px,.85fr);gap:18px;margin-top:28px}
@@ -48,7 +48,7 @@
     .trade-workspace{width:100%;margin-top:14px}
     .chart-panel{width:100%;background:#0b0e11;border:1px solid #2b3139;border-radius:8px;padding:12px;box-shadow:none}
     .chart-panel>div:first-child{color:#848e9c}
-    .chart-panel svg{width:100%;height:650px;min-height:0;max-height:none;display:block;background:#0b0e11;touch-action:pan-y}
+    .chart-panel svg{width:100%;height:650px;min-height:0;max-height:none;display:block;background:#0b0e11;touch-action:pan-y;overflow:visible}
     .chart-controls{gap:6px;margin:12px 0;padding:8px 0;border-bottom:1px solid #2b3139}
     .chart-controls button{background:#181d25;border:1px solid #343b46;border-radius:5px;padding:7px 11px;color:#c5cbd3}
     .chart-controls button[aria-pressed="true"]{background:#f0b90b;color:#111;border-color:#f0b90b}
@@ -64,7 +64,7 @@
       main{padding-inline:8px}
       #accountPanel{padding:10px}
       .chart-panel{padding:5px}
-      .chart-panel svg{height:430px;min-height:430px}
+      .chart-panel svg{height:430px;min-height:430px;overflow:visible}\n      .app-nav{margin-bottom:34px}\n      #tradingWorkspace>.chart-controls{margin-top:20px;padding-top:12px}\n      .chart-controls .chart-control-label{font-size:13px;color:#eaecef}
       .chart-controls{gap:5px}
       .chart-controls button{padding:7px 9px;font-size:12px}
     }
@@ -85,7 +85,7 @@
     .intro{color:#b7c6d9;font-size:14px;margin-top:-8px}
     #accountPanel{background:rgba(13,24,40,.78);border:1px solid var(--line);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.22);backdrop-filter:blur(14px)}
     #accountPanel>h2{font-size:21px;margin:0 0 12px}
-    .app-nav{display:flex;flex-wrap:nowrap;gap:5px;margin:16px 0 22px;padding:6px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:13px;overflow-x:auto;scrollbar-width:none}
+    .app-nav{display:flex;flex-wrap:nowrap;gap:5px;margin:16px 0 30px;padding:6px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:13px;overflow-x:auto;scrollbar-width:none}
     .app-nav::-webkit-scrollbar{display:none}.app-nav button{flex:1 0 auto;min-width:0;padding:10px 12px;border:0;background:transparent;color:#aebed2;font-size:13px;white-space:nowrap;border-radius:9px}
     .app-nav button[aria-current=page]{background:linear-gradient(135deg,#1eaa91,#27d9b0);color:#06251f;box-shadow:0 4px 16px rgba(39,217,176,.16)}
     .account-hero{background:linear-gradient(125deg,rgba(25,65,91,.88),rgba(16,34,56,.92) 65%,rgba(20,55,64,.8));border:1px solid var(--line);border-radius:17px;padding:19px;margin:8px 0 18px;box-shadow:inset 0 1px rgba(255,255,255,.04)}
@@ -155,7 +155,7 @@
   </style>
 </head>
 <body>
-  <header><div class="brand">SYR <span>TRADER</span></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
+  <header><div class="brand">SYR <span>TRADER</span><small class="brand-powered">Powered by <strong>Kamash</strong></small></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
   <main>
     <div class="eyebrow">منصة التداول</div>
     <h1>مرحباً بك في <span class="syr-title">SYR TRADER</span><span class="flag-accent" aria-hidden="true"><span>★ ★ ★</span></span></h1>
@@ -790,9 +790,9 @@
     }
     let candles=continuous.slice(-chartVisibleCount);
     const vals=candles.map(x=>x.close),last=vals[vals.length-1],first=vals[0],hi=Math.max(...candles.map(x=>x.high)),lo=Math.min(...candles.map(x=>x.low));
-    const range=Math.max(hi-lo,Math.abs(hi)*0.00015,1),left=62,right=1055,top=28,bottom=505,width=right-left,height=bottom-top;
+    const range=Math.max(hi-lo,Math.abs(hi)*0.00015,1),left=112,right=1038,top=34,bottom=505,width=right-left,height=bottom-top;
     const min=lo-range*.10,max=hi+range*.10,y=v=>bottom-(v-min)/(max-min)*height;
-    for(let i=0;i<=5;i++){const yy=top+i*height/5,v=max-(max-min)*i/5;svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#26313b","stroke-width":1}));addText(left-12,yy+4,fmt(v));}
+    for(let i=0;i<=5;i++){const yy=top+i*height/5,v=max-(max-min)*i/5;svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#26313b","stroke-width":1}));addText(left-14,yy+5,fmt(v),"end",16,"#ffffff");}
     const slot=width/Math.max(1,candles.length),bodyW=Math.max(3,Math.min(13,slot*.62));
     candles.forEach((c,i)=>{
       const x=left+(i+.5)*slot;
@@ -815,7 +815,7 @@
       if(Number.isFinite(entry)&&entry>=min&&entry<=max){const yy=y(entry);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#f6c85f","stroke-width":1.4,"stroke-dasharray":"7 5","opacity":.9}));addText(right-4,yy-5,"دخول #"+(index+1)+" "+fmt(entry),"end",10,"#f6c85f");}
       if(Number.isFinite(liquidation)&&liquidation>=min&&liquidation<=max){const yy=y(liquidation);svg.appendChild(el("line",{x1:left,y1:yy,x2:right,y2:yy,stroke:"#ff7185","stroke-width":1.5,"stroke-dasharray":"4 4","opacity":.95}));addText(right-4,yy+12,"تصفية #"+(index+1)+" "+fmt(liquidation),"end",10,"#ff8a9a");}
     });
-    const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.8,"stroke-dasharray":"6 4"}));const priceTagY=Math.max(top+2,Math.min(bottom-30,lastY-14));svg.appendChild(el("rect",{x:right-142,y:priceTagY,width:142,height:28,rx:5,fill:"#35e3c1",stroke:"#b9fff0","stroke-width":1}));const priceTag=el("text",{x:right-9,y:priceTagY+19,fill:"#071b19","font-size":15,"font-weight":800,"text-anchor":"end"});priceTag.textContent=fmt(last)+" ليرة";svg.appendChild(priceTag);
+    const lastY=y(last);svg.appendChild(el("line",{x1:left,y1:lastY,x2:right,y2:lastY,stroke:"#35e3c1","stroke-width":1.8,"stroke-dasharray":"6 4"}));const priceTagY=Math.max(top+2,Math.min(bottom-34,lastY-17));svg.appendChild(el("rect",{x:right-190,y:priceTagY,width:190,height:34,rx:6,fill:"#35e3c1",stroke:"#d4fff6","stroke-width":1.5}));const priceTag=el("text",{x:right-10,y:priceTagY+23,fill:"#071b19","font-size":18,"font-weight":900,"text-anchor":"end"});priceTag.textContent=fmt(last)+" ليرة";svg.appendChild(priceTag);
     addText(left,bottom+25,new Date(candles[0].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"start",11);addText(right,bottom+25,new Date(candles[candles.length-1].time).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"}),"end",11);
     addText(left,top-16,"السعر (ليرة)","start",12);addText(left,548,"RSI (14)","start",12);
     const rsiValues=[];for(let i=0;i<vals.length;i++){if(i<14){rsiValues.push(null);continue;}let gains=0,losses=0;for(let j=i-13;j<=i;j++){const d=vals[j]-vals[j-1];if(d>0)gains+=d;else losses-=d;}const avgG=gains/14,avgL=losses/14;rsiValues.push(avgL===0?100:100-100/(1+avgG/avgL));}
