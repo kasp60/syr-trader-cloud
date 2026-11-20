@@ -407,7 +407,8 @@ const syncPlatformReserve = async (db, bounds=null) => {
 };
 
 const reserveSettlementStatements = (db, asset, tradeId, lockMinor, customerPnl, eventType, now) => {
-  const pnl=BigInt(customerPnl),payout=pnl>0n?pnl:0n,gain=pnl<0n?-pnl:0n,release=BigInt(lockMinor);
+  const pnl=BigInt(customerPnl),payout=pnl>0n?pnl:0n,gain=pnl<0n?-pnl:0n;
+  const requestedRelease=BigInt(lockMinor),release=requestedRelease>BigInt(Number.MAX_SAFE_INTEGER)?BigInt(Number.MAX_SAFE_INTEGER):requestedRelease;
   return [
     db.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+MAX(0,?-deficit_minor) WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=CASE WHEN ?>0 THEN MAX(0,deficit_minor-?) ELSE deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND status='open')")
       .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(gain),Number(gain),Number(payout),Number(payout),Number(release),Number(release),now,asset,tradeId),
