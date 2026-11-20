@@ -482,17 +482,20 @@ const walletApi = async (request, env, url) => {
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
     let body;try{body=await readJson(request);}catch{return json({ok:false,error:"بيانات الطلب غير صحيحة"},400);}
     const instrumentId=String(body.instrumentId||""),direction=String(body.direction||"");
-    const quantity=Number(body.quantity),quantityMicro=Math.round(quantity*1000000),leverage=Number(body.leverage);
-    if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||!Number.isFinite(quantity)||quantity<=0||quantity>1000000||!Number.isSafeInteger(quantityMicro)||quantityMicro<=0||!Number.isInteger(leverage)||leverage<1||leverage>20)
-      return json({ok:false,error:"تحقق من الاتجاه والكمية والرافعة (من 1x إلى 20x)"},400);
+    const marginAmount=Number(body.margin),leverage=Number(body.leverage);
+    if(!instrumentId||instrumentId.length>80||!["long","short"].includes(direction)||!Number.isFinite(marginAmount)||marginAmount<=0||marginAmount>1000000000000||!Number.isInteger(leverage)||leverage<1||leverage>20)
+      return json({ok:false,error:"أدخل مبلغ الهامش بشكل صحيح وحدد رافعة من 1x إلى 20x"},400);
     const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
     const marginAssetSymbol=direction==="long"?"SYP":"USD";
-    const marginBig=direction==="long"
-      ? (BigInt(instrument.priceMicro)*BigInt(quantityMicro)+1000000000000n*BigInt(leverage)-1n)/(1000000000000n*BigInt(leverage))
-      : (BigInt(quantityMicro)*100n+1000000n*BigInt(leverage)-1n)/(1000000n*BigInt(leverage));
-    if(marginBig<=0n||marginBig>9007199254740991n)return json({ok:false,error:"الهامش خارج النطاق"},400);
-    const marginCents=Number(marginBig),entry=BigInt(instrument.priceMicro);
+    const marginMinor=BigInt(Math.round(marginAmount*(direction==="long"?1:100)));
+    const entry=BigInt(instrument.priceMicro),lev=BigInt(leverage);
+    const quantityBig=direction==="long"
+      ? (marginMinor*lev*1000000000000n+entry/2n)/entry
+      : marginMinor*lev*10000n;
+    if(marginMinor<=0n||marginMinor>9007199254740991n||quantityBig<=0n||quantityBig>9007199254740991n)
+      return json({ok:false,error:"قيمة الهامش أو حجم الصفقة خارج النطاق"},400);
+    const quantityMicro=Number(quantityBig),marginCents=Number(marginMinor);
     const liquidationPriceMicro=Number((direction==="long"?entry*BigInt(leverage-1)/BigInt(leverage):entry*BigInt(leverage+1)/BigInt(leverage))||1n);
     const now=new Date().toISOString(),tradeId=crypto.randomUUID();
     await env.DB.batch([
@@ -507,7 +510,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=?)").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع")+" تجريبية",tradeId)
     ]);
     if(!results?.[1]?.meta?.changes)return json({ok:false,error:"رصيد "+(marginAssetSymbol==="SYP"?"الليرة":"الدولار")+" غير كافٍ للهامش"},409);
-    return json({ok:true,tradeId,direction,quantity,leverage,marginCents,marginAssetSymbol,entryPriceMicro:instrument.priceMicro,liquidationPriceMicro});
+    return json({ok:true,tradeId,direction,marginAmount,quantity:Number(quantityMicro)/1000000,leverage,marginCents,marginAssetSymbol,entryPriceMicro:instrument.priceMicro,liquidationPriceMicro});
   }
 
   if (url.pathname === "/api/paper/trade-close" && request.method === "POST") {
