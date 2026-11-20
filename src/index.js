@@ -362,6 +362,66 @@ const marketQuote = (midPrice, side) => {
   return side === "ask" ? (scaled + 9999n) / 10000n : scaled / 10000n;
 };
 
+
+const getReserveReferenceBounds = async (db, targetOverride = null) => {
+  const row=await db.prepare("SELECT p.price_micro AS priceMicro,t.target_price_micro AS targetPriceMicro,t.from_price_micro AS fromPriceMicro,t.transition_started_at AS transitionStartedAt,t.transition_seconds AS transitionSeconds FROM market_prices p LEFT JOIN market_price_targets t ON t.instrument_id=p.instrument_id WHERE p.instrument_id='syr-usd-syp'").first();
+  const fallback=Number((await db.prepare("SELECT rate*1000000 AS price FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1").first())?.price||row?.priceMicro||0);
+  let current=Number(row?.targetPriceMicro||fallback);
+  const started=Date.parse(String(row?.transitionStartedAt||"")),duration=Number(row?.transitionSeconds||0)*1000,elapsed=Date.now()-started;
+  if(row?.fromPriceMicro&&row?.targetPriceMicro&&Number.isFinite(started)&&duration>=60000&&elapsed>=0&&elapsed<duration){
+    const from=BigInt(row.fromPriceMicro),to=BigInt(row.targetPriceMicro);
+    current=Number(from+(to-from)*BigInt(Math.max(0,elapsed))/BigInt(duration));
+  }
+  const target=targetOverride===null?Number(row?.targetPriceMicro||current):Number(targetOverride);
+  const refs=[current,target].filter(value=>Number.isSafeInteger(value)&&value>0);
+  if(!refs.length)throw new Error("تعذر تحديد السعر المرجعي للاحتياطي");
+  return {minReference:Math.min(...refs),maxReference:Math.max(...refs)};
+};
+
+const tradeReserveLock = (direction, quantityMicro, entryPriceMicro, bounds) => {
+  const quantity=BigInt(quantityMicro),entry=BigInt(entryPriceMicro);
+  if(direction==="long"){
+    const upperMid=(BigInt(Math.ceil(bounds.maxReference))*10050n+9999n)/10000n;
+    const exit=marketQuote(upperMid,"bid");
+    return exit>entry?(exit-entry)*quantity/1000000000000n:0n;
+  }
+  const lowerMid=BigInt(Math.floor(bounds.minReference))*9950n/10000n;
+  const exit=marketQuote(lowerMid,"ask");
+  return exit<entry?quantity*(entry-exit)*100n/(entry*1000000n):0n;
+};
+
+const reserveRequirements = async (db, bounds) => {
+  const rows=await db.prepare("SELECT direction,quantity_micro AS quantityMicro,entry_price_micro AS entryPriceMicro,margin_asset_symbol AS assetSymbol FROM paper_trades WHERE status='open' AND instrument_id='syr-usd-syp'").all();
+  const totals={SYP:0n,USD:0n};
+  for(const trade of rows.results||[]){
+    const asset=trade.assetSymbol==="USD"?"USD":"SYP";
+    totals[asset]+=tradeReserveLock(trade.direction,trade.quantityMicro,trade.entryPriceMicro,bounds);
+  }
+  return {SYP:totals.SYP,USD:totals.USD};
+};
+
+const syncPlatformReserve = async (db, bounds=null) => {
+  const refBounds=bounds||await getReserveReferenceBounds(db);
+  const required=await reserveRequirements(db,refBounds);
+  for(const asset of ["SYP","USD"]){
+    const amount=Number(required[asset]);
+    if(!Number.isSafeInteger(amount)||amount<0)throw new Error("قيمة التغطية المطلوبة خارج النطاق");
+    await db.prepare("UPDATE platform_reserve_balances SET required_minor=?,reserved_minor=MIN(balance_minor,?),updated_at=? WHERE asset_symbol=?")
+      .bind(amount,amount,new Date().toISOString(),asset).run();
+  }
+  return required;
+};
+
+const reserveSettlementStatements = (db, asset, tradeId, lockMinor, customerPnl, eventType, now) => {
+  const pnl=BigInt(customerPnl),payout=pnl>0n?pnl:0n,gain=pnl<0n?-pnl:0n,release=BigInt(lockMinor);
+  return [
+    db.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+? WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND status='open')")
+      .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(payout),Number(payout),Number(release),Number(release),now,asset,tradeId),
+    db.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND status='open')")
+      .bind(crypto.randomUUID(),asset,eventType,Number(gain-payout),tradeId,eventType==="liquidation_gain"?"ربح المنصة من تصفية الصفقة":pnl>0n?"دفع ربح الصفقة":"ربح المنصة من خسارة الصفقة",now,tradeId)
+  ];
+};
+
 const processPendingLimitOrders = async (db) => {
   const pending = await db.prepare("SELECT o.id,o.user_id AS userId,o.instrument_id AS instrumentId,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,p.price_micro AS currentPriceMicro FROM paper_limit_orders o JOIN market_prices p ON p.instrument_id=o.instrument_id WHERE o.status='pending'").all();
   let filled = 0;
