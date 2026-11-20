@@ -631,7 +631,8 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("INSERT INTO market_price_history(id,instrument_id,price_micro,source,created_at) VALUES(?,'syr-usd-syp',?,'manual',?)").bind(crypto.randomUUID(),priceMicro,now),
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',0,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
     ]);
-    return json({ok:true,rate,botEnabled:true});
+    const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
+    return json({ok:true,rate,botEnabled:!!bot?.enabled});
   }
 
   if (url.pathname === "/api/wallet/member-code" && request.method === "GET") {
