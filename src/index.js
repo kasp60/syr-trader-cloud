@@ -763,6 +763,8 @@ const walletApi = async (request, env, url) => {
     const fromPriceMicro=Number(current?.priceMicro||priceMicro);
     if(!Number.isSafeInteger(fromPriceMicro)||fromPriceMicro<=0)return json({ok:false,error:"تعذر قراءة السعر الحالي"},409);
     await env.DB.batch([
+      env.DB.prepare("INSERT OR IGNORE INTO market_prices(instrument_id,price_micro,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?)").bind(fromPriceMicro,user.id,now),
+      env.DB.prepare("INSERT OR IGNORE INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?)").bind(fromPriceMicro/1000000,user.id,now),
       env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
     ]);
