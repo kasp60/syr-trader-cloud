@@ -156,8 +156,11 @@ const ensurePaperSchema = async (db) => {
 const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
-  await ensurePaperSchema(env.DB);
-  await env.DB.prepare("INSERT OR IGNORE INTO paper_accounts (user_id,cash_cents) VALUES (?,1000000)").bind(user.id).run();
+  if (url.pathname.startsWith("/api/market/") || url.pathname.startsWith("/api/paper/") ||
+      url.pathname.startsWith("/api/admin/market-")) {
+    await ensurePaperSchema(env.DB);
+    await env.DB.prepare("INSERT OR IGNORE INTO paper_accounts (user_id,cash_cents) VALUES (?,1000000)").bind(user.id).run();
+  }
 
   if (url.pathname === "/api/admin/users" && request.method === "GET") {
     if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
@@ -269,8 +272,9 @@ const walletApi = async (request, env, url) => {
       FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id
       WHERE i.id=? AND i.is_active=1`).bind(instrumentId).first();
     if(!instrument)return json({ok:false,error:"لا يوجد سعر معتمد لهذه الأداة حالياً"},409);
-    const totalBig=(BigInt(instrument.priceMicro)*BigInt(quantityMicro)+9999999999n)/10000000000n;
-    if(totalBig<=0n||totalBig>9007199254740991n)return json({ok:false,error:"قيمة الصفقة خارج النطاق"},400);
+    const notional=BigInt(instrument.priceMicro)*BigInt(quantityMicro);
+    const totalBig=side==="buy"?(notional+9999999999n)/10000000000n:notional/10000000000n;
+    if(totalBig<=0n||totalBig>9007199254740991n)return json({ok:false,error:"قيمة الصفقة أقل من سنت أو خارج النطاق"},400);
     const totalCents=Number(totalBig);
     const account=await env.DB.prepare("SELECT cash_cents AS cashCents FROM paper_accounts WHERE user_id=?").bind(user.id).first();
     const position=await env.DB.prepare("SELECT quantity_micro AS quantityMicro FROM paper_positions WHERE user_id=? AND instrument_id=?")
