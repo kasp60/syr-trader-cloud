@@ -881,12 +881,16 @@ const walletApi = async (request, env, url) => {
     const current=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id='syr-usd-syp'").first();
     const fromPriceMicro=Number(current?.priceMicro||priceMicro);
     if(!Number.isSafeInteger(fromPriceMicro)||fromPriceMicro<=0)return json({ok:false,error:"تعذر قراءة السعر الحالي"},409);
-    await env.DB.batch([
-      env.DB.prepare("INSERT OR IGNORE INTO market_prices(instrument_id,price_micro,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?)").bind(fromPriceMicro,user.id,now),
-      env.DB.prepare("INSERT OR IGNORE INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?)").bind(fromPriceMicro/1000000,user.id,now),
-      env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) VALUES('syr-usd-syp',?,?,?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
-      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now)
+    const nextBounds=await getReserveReferenceBounds(env.DB,priceMicro),required=await reserveRequirements(env.DB,nextBounds);
+    const requiredSyp=Number(required.SYP),requiredUsd=Number(required.USD);
+    if(!Number.isSafeInteger(requiredSyp)||!Number.isSafeInteger(requiredUsd))return json({ok:false,error:"التغطية المطلوبة تتجاوز النطاق المحاسبي"},409);
+    const changes=await env.DB.batch([
+      env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,reserved_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,updated_at=? WHERE asset_symbol IN ('SYP','USD') AND (SELECT COUNT(*) FROM platform_reserve_balances WHERE (asset_symbol='SYP' AND balance_minor>=?) OR (asset_symbol='USD' AND balance_minor>=?))=2").bind(requiredSyp,requiredUsd,requiredSyp,requiredUsd,now,requiredSyp,requiredUsd),
+      env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) SELECT 'syr-usd-syp',?,?,?,?,?,? WHERE changes()=2 ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
+      env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) VALUES('syr-usd-syp',1,80,0,?,?) ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
+      env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) VALUES('usd-syp','USD','SYP',?,?,?) ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
     ]);
+    if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±0.5%. موّل الاحتياطي أولاً."},409);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
     return json({ok:true,targetRate:rate,fromPrice:Number(fromPriceMicro)/1000000,transitionMinutes,botEnabled:true});
   }
@@ -1005,11 +1009,12 @@ const walletApi = async (request, env, url) => {
 
   if (url.pathname === "/api/admin/platform-reserve" && request.method === "GET") {
     if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
-    const [balances,movements]=await Promise.all([
-      env.DB.prepare("SELECT asset_symbol AS assetSymbol,balance_minor AS balanceMinor,reserved_minor AS reservedMinor,(balance_minor-reserved_minor) AS availableMinor FROM platform_reserve_balances ORDER BY asset_symbol").all(),
-      env.DB.prepare("SELECT m.id,m.asset_symbol AS assetSymbol,m.amount_minor AS amountMinor,m.external_reference AS externalReference,m.note,m.created_at AS createdAt,u.display_name AS createdBy FROM platform_reserve_movements m JOIN users u ON u.id=m.created_by ORDER BY m.created_at DESC LIMIT 50").all()
+    const [balances,movements,ledger]=await Promise.all([
+      env.DB.prepare("SELECT asset_symbol AS assetSymbol,balance_minor AS balanceMinor,reserved_minor AS reservedMinor,required_minor AS requiredMinor,deficit_minor AS deficitMinor,(balance_minor-reserved_minor) AS availableMinor FROM platform_reserve_balances ORDER BY asset_symbol").all(),
+      env.DB.prepare("SELECT m.id,m.asset_symbol AS assetSymbol,m.amount_minor AS amountMinor,m.external_reference AS externalReference,m.note,m.created_at AS createdAt,u.display_name AS createdBy FROM platform_reserve_movements m JOIN users u ON u.id=m.created_by ORDER BY m.created_at DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT id,asset_symbol AS assetSymbol,event_type AS eventType,amount_minor AS amountMinor,reference_id AS referenceId,note,created_at AS createdAt FROM platform_reserve_ledger ORDER BY created_at DESC LIMIT 50").all()
     ]);
-    return json({ok:true,balances:balances.results||[],movements:movements.results||[]});
+    return json({ok:true,balances:balances.results||[],movements:movements.results||[],ledger:ledger.results||[]});
   }
   if (url.pathname === "/api/admin/platform-reserve/topup" && request.method === "POST") {
     if(user.role!=="admin")return json({ok:false,error:"غير مصرح"},403);
@@ -1024,7 +1029,8 @@ const walletApi = async (request, env, url) => {
     try {
       result=await env.DB.batch([
         env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=balance_minor+?,updated_at=? WHERE asset_symbol=? AND balance_minor<=9007199254740991-?").bind(amountMinor,now,assetSymbol,amountMinor),
-        env.DB.prepare("INSERT INTO platform_reserve_movements(id,asset_symbol,amount_minor,external_reference,note,created_by,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1").bind(id,assetSymbol,amountMinor,externalReference,note,user.id,now)
+        env.DB.prepare("INSERT INTO platform_reserve_movements(id,asset_symbol,amount_minor,external_reference,note,created_by,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1").bind(id,assetSymbol,amountMinor,externalReference,note,user.id,now),
+        env.DB.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,'funding',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),assetSymbol,amountMinor,assetSymbol+":"+externalReference,"تمويل خارجي أضافه المدير: "+note,now)
       ]);
     } catch {
       const duplicate=await env.DB.prepare("SELECT id FROM platform_reserve_movements WHERE asset_symbol=? AND external_reference=?").bind(assetSymbol,externalReference).first();
@@ -1032,7 +1038,8 @@ const walletApi = async (request, env, url) => {
       throw new Error("تعذر تسجيل تمويل الاحتياطي");
     }
     if(!result?.[0]?.meta?.changes||!result?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إضافة المبلغ؛ تحقق من الرصيد أو المرجع"},409);
-    const balance=await env.DB.prepare("SELECT balance_minor AS balanceMinor,reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(assetSymbol).first();
+    await syncPlatformReserve(env.DB);
+    const balance=await env.DB.prepare("SELECT balance_minor AS balanceMinor,reserved_minor AS reservedMinor,required_minor AS requiredMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(assetSymbol).first();
     return json({ok:true,assetSymbol,amountMinor,balance});
   }
 
