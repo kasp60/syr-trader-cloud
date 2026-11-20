@@ -467,15 +467,24 @@ const walletApi = async (request, env, url) => {
     const updateSql = type === "credit"
       ? "UPDATE wallets SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ? AND balance_minor <= 9007199254740991 - ?"
       : "UPDATE wallets SET balance_minor = balance_minor - ?, updated_at = ? WHERE id = ? AND balance_minor >= ?";
-    const results = await env.DB.batch([
-      env.DB.prepare(updateSql).bind(amountMinor, new Date().toISOString(), walletId, amountMinor),
-      env.DB.prepare(
-        `INSERT INTO ledger_entries
-          (id, wallet_id, entry_type, amount_minor, idempotency_key, created_by, note)
-         SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE changes() = 1`
-      ).bind(entryId, walletId, type, amountMinor, idempotencyKey, user.id, note || null)
-    ]);
+    let results;
+    try {
+      results = await env.DB.batch([
+        env.DB.prepare(updateSql).bind(amountMinor, new Date().toISOString(), walletId, amountMinor),
+        env.DB.prepare(
+          `INSERT INTO ledger_entries
+            (id, wallet_id, entry_type, amount_minor, idempotency_key, created_by, note)
+           SELECT ?, ?, ?, ?, ?, ?, ?
+           WHERE changes() = 1`
+        ).bind(entryId, walletId, type, amountMinor, idempotencyKey, user.id, note || null)
+      ]);
+    } catch (error) {
+      const duplicate = await env.DB.prepare(
+        "SELECT id FROM ledger_entries WHERE idempotency_key = ? LIMIT 1"
+      ).bind(idempotencyKey).first();
+      if (duplicate) return json({ ok: false, error: "هذه الحركة مسجلة مسبقاً" }, 409);
+      throw error;
+    }
     if (!results?.[0]?.meta?.changes) {
       return json({ ok: false, error: "المحفظة غير موجودة أو الرصيد غير كافٍ" }, 409);
     }
