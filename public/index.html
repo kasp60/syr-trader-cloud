@@ -238,6 +238,8 @@
     $("accountName").textContent = data.user.displayName;
     $("accountEmail").textContent = data.user.email;
     $("accountRole").textContent = data.user.role === "admin" ? "مدير" : "مستخدم";
+    $("memberCodeValue").textContent = data.memberCode || "—";
+    $("walletMemberCode").textContent = data.memberCode || "—";
     const wallets = data.wallets || [];
     const syp = wallets.find((w) => w.symbol === "SYP");
     const usd = wallets.find((w) => w.symbol === "USD");
@@ -249,10 +251,11 @@
     $("exchangeRateView").textContent = rateText;
     if (data.user.role === "admin" && data.exchangeRate?.rate > 0) $("exchangeRateInput").value = data.exchangeRate.rate;
     loadLedger();
+    loadFinanceRequests();
     loadPaperMarket();
     loadPaperHistory();
     loadTradingChart();
-    if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); }
+    if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests(); }
     else $("adminPanel").classList.add("hidden");
   };
   const addTextRow = (container, left, right, className = "ledger-row") => {
@@ -281,6 +284,63 @@
       });
     } catch (error) { container.textContent = error.message; }
   };
+  const statusText = value => value==="pending"?"قيد المراجعة":value==="approved"?"مقبول":"مرفوض";
+  const loadFinanceRequests = async () => {
+    const container=$("financeRequestList");if(!container)return;container.replaceChildren();
+    try{
+      const data=await api("/api/wallet/finance-requests",{headers:{}});
+      const groups=[["الإيداعات",data.deposits||[],x=>"إيداع"],["السحوبات",data.withdrawals||[],x=>"سحب"],["التحويلات",data.transfers||[],x=>x.direction==="out"?"تحويل صادر":"تحويل وارد"]];
+      let count=0;
+      for(const [heading,items,label] of groups){
+        const title=document.createElement("h4");title.textContent=heading;container.appendChild(title);
+        if(!items.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="لا يوجد سجل.";container.appendChild(empty);continue;}
+        items.forEach(item=>{count++;const amount=Number(item.amount).toLocaleString("en-US")+" ليرة";let detail=label(item)+" · "+amount;
+          if(item.status)detail+=" · "+statusText(item.status);
+          if(item.otherName)detail+=" · "+item.otherName+" ("+item.otherCode+")";
+          addTextRow(container,detail,new Date(item.createdAt).toLocaleString("ar"));
+        });
+      }
+      if(!count)container.textContent="لا توجد طلبات أو تحويلات حتى الآن.";
+    }catch(error){container.textContent=error.message;}
+  };
+  const loadAdminFinanceRequests = async () => {
+    const container=$("adminFinanceRequests");if(!container)return;container.replaceChildren();
+    try{
+      const data=await api("/api/admin/finance-requests",{headers:{}});
+      const render=(heading,items,type)=>{
+        const title=document.createElement("h4");title.textContent=heading;container.appendChild(title);
+        if(!items.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="لا توجد طلبات.";container.appendChild(empty);return;}
+        items.forEach(item=>{
+          const row=document.createElement("div");row.className="admin-wallet-row";
+          const info=document.createElement("div"),name=document.createElement("strong"),detail=document.createElement("div");
+          name.textContent=item.displayName+" · "+item.amount.toLocaleString("en-US")+" ليرة";
+          detail.className="muted";detail.textContent="ID: "+item.memberCode+" · "+item.email+" · "+statusText(item.status)+(item.payoutDetails?" · "+item.payoutDetails:"");
+          info.append(name,detail);row.appendChild(info);
+          if(type==="deposit"){
+            const proof=document.createElement("button");proof.type="button";proof.textContent="عرض الإثبات";
+            proof.addEventListener("click",()=>window.open("/api/admin/deposit-proof?id="+encodeURIComponent(item.id),"_blank","noopener"));
+            row.appendChild(proof);
+          }
+          if(item.status==="pending"){
+            const actions=document.createElement("div");actions.style.display="flex";actions.style.gap="6px";
+            for(const [decision,label] of [["approve","قبول"],["reject","رفض"]]){
+              const button=document.createElement("button");button.type="button";button.textContent=label;
+              button.addEventListener("click",async()=>{button.disabled=true;try{
+                await api(type==="deposit"?"/api/admin/deposit-review":"/api/admin/withdrawal-review",{method:"POST",body:JSON.stringify({requestId:item.id,decision})});
+                message($("adminMessage"),"تمت مراجعة الطلب وتحديث الحالة.","success");await loadAdminFinanceRequests();await loadAdminWallets();await loadFinanceRequests();
+              }catch(error){message($("adminMessage"),error.message,"error");button.disabled=false;}});
+              actions.appendChild(button);
+            }
+            row.appendChild(actions);
+          }
+          container.appendChild(row);
+        });
+      };
+      render("طلبات الإيداع",data.deposits||[],"deposit");
+      render("طلبات السحب",data.withdrawals||[],"withdrawal");
+    }catch(error){container.textContent=error.message;}
+  };
+
   const loadAdminUsers = async () => {
     const container = $("adminUsersList");
     container.replaceChildren();
@@ -295,7 +355,7 @@
         name.textContent = account.displayName + " · " + account.email;
         const detail = document.createElement("div");
         detail.className = "muted";
-        detail.textContent = (account.role === "admin" ? "مدير" : "مستخدم") + " · " +
+        detail.textContent = "رقم العضوية: " + (account.memberCode || "—") + " · " + (account.role === "admin" ? "مدير" : "مستخدم") + " · " +
           (account.status === "active" ? "نشط" : account.status === "suspended" ? "موقوف" : "بانتظار التفعيل");
         info.append(name, detail);
         const action = document.createElement("button");
@@ -358,7 +418,7 @@
         const cash=(Math.abs(Number(entry.cashDeltaCents))/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
         const price=(Number(entry.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
         const date=new Date(entry.createdAt).toLocaleString("ar");
-        addTextRow(container,side+" · "+entry.symbol+" · "+qty+" · سعر "+price+" USD · إجمالي "+cash+" USD",date);
+        addTextRow(container,side+" · "+entry.symbol+" · "+qty+" · سعر "+price+" ليرة · إجمالي "+cash+" ليرة",date);
       });
     }catch(error){container.textContent=error.message;}
   };
@@ -376,7 +436,7 @@
         const info=document.createElement("div");
         const title=document.createElement("strong"); title.textContent=item.symbol+" · "+item.name;
         const detail=document.createElement("div"); detail.className="muted";
-        detail.textContent=(item.isActive?"نشطة":"موقوفة")+" · "+(item.priceMicro?(Number(item.priceMicro)/1000000).toLocaleString("en-US")+" USD":"بلا سعر")+" · بوت "+(item.botEnabled?"يعمل بالخلفية":"متوقف");
+        detail.textContent=(item.isActive?"نشطة":"موقوفة")+" · "+(item.priceMicro?(Number(item.priceMicro)/1000000).toLocaleString("en-US")+" ليرة":"بلا سعر")+" · بوت "+(item.botEnabled?"يعمل بالخلفية":"متوقف");
         info.append(title,detail);
         const action=document.createElement("button"); action.type="button";
         action.textContent=item.isActive?"إيقاف":"تفعيل";
@@ -395,11 +455,11 @@
   const loadPaperMarket = async () => {
     try {
       const data = await api("/api/market/board", { headers: {} });
-      $("paperCash").textContent = (Number(data.cashCents || 0) / 100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " USD";
+      $("paperCash").textContent = (Number(data.cashCents || 0) / 100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " ليرة";
       const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument"), chartSelect=$("chartInstrument");
       market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren(); chartSelect.replaceChildren();
       data.market.forEach(item => {
-        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" USD" : "السعر غير محدد";
+        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة" : "السعر غير محدد";
         const updated = item.updatedAt ? "آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar") : "لم يحدد المدير سعراً بعد";
         addTextRow(market,item.symbol+" · "+item.name,price+" · "+updated+" · سعر يدوي وليس مباشراً");
         const opt=document.createElement("option"); opt.value=item.id; opt.textContent=item.symbol+" · "+item.name;
@@ -443,12 +503,12 @@
     const id=$("chartInstrument")?.value;if(!id)return;
     try{const [chart,board]=await Promise.all([api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),api("/api/market/board",{headers:{}})]);
       drawMarketChart(chart.points||[]);const item=board.market.find(x=>x.id===id);
-      if(item?.priceMicro)$("chartLastPrice").textContent=(Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})+" USD";
+      if(item?.priceMicro)$("chartLastPrice").textContent=(Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
       if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
-      const bot=window.__syrBotSettings?.[id];$("chartBotStatus").textContent=bot?.botEnabled?"البوت يعمل بالخلفية":"محاكاة السوق";$("chartBotStatus").classList.toggle("running",!!bot?.botEnabled);
+      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;$("chartBotStatus").textContent=botEnabled?"البوت يعمل بالخلفية":"بانتظار سعر الإدارة";$("chartBotStatus").classList.toggle("running",botEnabled);
     }catch(error){$("chartUpdated").textContent=error.message;}
   };
-  document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet")loadLedger();if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();}}));
+  document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet"){loadLedger();loadFinanceRequests();}if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();loadAdminFinanceRequests();}}));
   document.querySelectorAll("[data-trade-tab]").forEach(button=>button.addEventListener("click",()=>{const v=button.dataset.tradeTab;document.querySelectorAll("[data-trade-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));$("tradeTerminalView").classList.toggle("active",v==="terminal");$("tradePositionsView").classList.toggle("active",v==="positions");}));
   $("chartInstrument").addEventListener("change",loadTradingChart);
   $("marketBotForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("marketBotForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:true,volatilityBps:Number($("botVolatility").value),driftBps:Number($("botDrift").value)})});message($("botAdminMessage"),"تم تشغيل البوت على الخادم.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
@@ -577,6 +637,35 @@
     } catch(error) { message($("marketAdminMessage"),error.message,"error"); }
     finally { button.disabled=false; }
   });
+  $("depositForm").addEventListener("submit",async event=>{
+    event.preventDefault();const form=$("depositForm"),button=form.querySelector("button[type=submit]");button.disabled=true;
+    message($("depositMessage"),"جارٍ إرسال طلب الإيداع...");
+    try{
+      const payload=new FormData();payload.append("amount",$("depositAmount").value);payload.append("proof",$("depositProof").files[0]);
+      const response=await fetch("/api/wallet/deposit",{method:"POST",credentials:"same-origin",body:payload});
+      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"تعذر إرسال الطلب");
+      form.reset();message($("depositMessage"),"تم إرسال طلب الإيداع. سيظهر الرصيد بعد مراجعة المدير.","success");await loadFinanceRequests();
+    }catch(error){message($("depositMessage"),error.message,"error");}finally{button.disabled=false;}
+  });
+  $("withdrawForm").addEventListener("submit",async event=>{
+    event.preventDefault();const form=$("withdrawForm"),button=form.querySelector("button[type=submit]");button.disabled=true;
+    message($("withdrawMessage"),"جارٍ تسجيل طلب السحب...");
+    try{
+      await api("/api/wallet/withdrawal",{method:"POST",body:JSON.stringify({amount:Number($("withdrawAmount").value),payoutDetails:$("withdrawDetails").value.trim()})});
+      form.reset();message($("withdrawMessage"),"تم حجز المبلغ وإرسال الطلب للمدير.","success");
+      const refreshed=await api("/api/auth/me",{headers:{}});showAccount(refreshed);await loadFinanceRequests();
+    }catch(error){message($("withdrawMessage"),error.message,"error");}finally{button.disabled=false;}
+  });
+  $("transferForm").addEventListener("submit",async event=>{
+    event.preventDefault();const form=$("transferForm"),button=form.querySelector("button[type=submit]");button.disabled=true;
+    message($("transferMessage"),"جارٍ تنفيذ التحويل...");
+    try{
+      const result=await api("/api/wallet/transfer",{method:"POST",body:JSON.stringify({memberCode:$("recipientMemberCode").value.trim(),amount:Number($("transferAmount").value)})});
+      form.reset();message($("transferMessage"),"تم تحويل "+Number(result.amount).toLocaleString("en-US")+" ليرة إلى "+result.recipientName+".","success");
+      const refreshed=await api("/api/auth/me",{headers:{}});showAccount(refreshed);await loadFinanceRequests();await loadLedger();
+    }catch(error){message($("transferMessage"),error.message,"error");}finally{button.disabled=false;}
+  });
+
   $("changePasswordForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form=$("changePasswordForm"),button=form.querySelector("button[type=submit]");
@@ -612,6 +701,7 @@
       message($("accountMessage"), error.message, "error");
     }
   });
+  setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},15000);
   api("/api/health", { headers: {} })
     .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "الخادم وقاعدة البيانات متصلان" : "الخادم متصل"; })
     .catch(() => { $("serverStatus").textContent = "تعذر الاتصال"; });
