@@ -763,21 +763,29 @@ const walletApi = async (request, env, url) => {
     if(!trade)return json({ok:false,error:"الصفقة مغلقة أو تمت تصفيتها أو غير موجودة"},404);
     const price=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first();
     if(!price)return json({ok:false,error:"السعر الحالي غير متاح"},409);
-    const exitPrice=marketQuote(price.priceMicro,trade.direction==="long"?"bid":"ask");
-    const delta=exitPrice-BigInt(trade.entryPriceMicro);
+    await syncPlatformReserve(env.DB);
+    const bounds=await getReserveReferenceBounds(env.DB),lock=tradeReserveLock(trade.direction,trade.quantityMicro,trade.entryPriceMicro,bounds);
+    const exitPrice=marketQuote(price.priceMicro,trade.direction==="long"?"bid":"ask"),delta=exitPrice-BigInt(trade.entryPriceMicro);
     const rawPnl=trade.direction==="long"?delta*BigInt(trade.quantityMicro)/1000000000000n:BigInt(trade.quantityMicro)*(-delta)*100n/(BigInt(trade.entryPriceMicro)*1000000n);
     const margin=BigInt(trade.marginCents),pnl=rawPnl < -margin ? -margin : rawPnl;
     const safePnl=pnl>9007199254740991n-margin?9007199254740991n-margin:pnl;
     const pnlCents=Number(safePnl),releaseCents=Number(margin+safePnl),now=new Date().toISOString();
     const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,trade.marginAssetSymbol).first();
     if(!wallet)return json({ok:false,error:"محفظة الصفقة غير موجودة"},409);
+    const reservePnl=BigInt(pnlCents),payout=reservePnl>0n?reservePnl:0n,gain=reservePnl<0n?-reservePnl:0n,release=BigInt(lock);
     const results=await env.DB.batch([
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor+?,updated_at=? WHERE id=? AND balance_minor<=9007199254740991-? AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')").bind(releaseCents,now,wallet.id,releaseCents,tradeId,user.id),
+      env.DB.prepare("UPDATE platform_reserve_balances SET balance_minor=CASE WHEN ?>0 THEN balance_minor+? WHEN balance_minor>=? THEN balance_minor-? ELSE 0 END,deficit_minor=deficit_minor+CASE WHEN balance_minor<? THEN ?-balance_minor ELSE 0 END,reserved_minor=MAX(0,reserved_minor-MIN(reserved_minor,?)),required_minor=MAX(0,required_minor-?),updated_at=? WHERE asset_symbol=? AND changes()=1 AND EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='open')")
+        .bind(Number(gain),Number(gain),Number(payout),Number(payout),Number(payout),Number(payout),Number(release),Number(release),now,trade.marginAssetSymbol,tradeId,user.id),
       env.DB.prepare("UPDATE paper_trades SET status='closed',closed_at=?,exit_price_micro=?,pnl_cents=? WHERE id=? AND user_id=? AND status='open' AND changes()=1").bind(now,Number(exitPrice),pnlCents,tradeId,user.id),
-      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE changes()=1 AND ?>0").bind(crypto.randomUUID(),wallet.id,releaseCents,"paper-trade:"+tradeId+":settlement",user.id,"تسوية صفقة مغلقة",releaseCents)
+      env.DB.prepare("INSERT INTO platform_reserve_ledger(id,asset_symbol,event_type,amount_minor,reference_id,note,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1")
+        .bind(crypto.randomUUID(),trade.marginAssetSymbol,pnlCents>0?"trade_payout":"trade_gain",Number(gain-payout),tradeId,pnlCents>0?"دفع ربح الصفقة":"تسجيل نتيجة الصفقة لصالح الاحتياطي",now),
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'credit',?,?,?,? WHERE EXISTS(SELECT 1 FROM paper_trades WHERE id=? AND user_id=? AND status='closed') AND ?>0")
+        .bind(crypto.randomUUID(),wallet.id,releaseCents,"paper-trade:"+tradeId+":settlement",user.id,"تسوية صفقة مغلقة",tradeId,user.id,releaseCents)
     ]);
-    if(!results?.[1]?.meta?.changes)return json({ok:false,error:"تعذر إغلاق الصفقة؛ حدّث الصفحة وحاول مجدداً"},409);
-    return json({ok:true,tradeId,pnlCents,releaseCents,marginAssetSymbol:trade.marginAssetSymbol,exitPriceMicro:Number(exitPrice)});
+    if(!results?.[2]?.meta?.changes)return json({ok:false,error:"تعذر إغلاق الصفقة؛ حدّث الصفحة وحاول مجدداً"},409);
+    await syncPlatformReserve(env.DB,bounds);
+    return json({ok:true,tradeId,pnlCents,releaseCents,marginAssetSymbol:trade.marginAssetSymbol,exitPriceMicro:Number(exitPrice),reserveLockedReleased:Number(lock)});
   }
 
   if (url.pathname === "/api/paper/order" && request.method === "POST") {
