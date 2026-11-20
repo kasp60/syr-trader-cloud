@@ -32,6 +32,7 @@
     .notice{margin-top:20px;padding:15px 18px;border-right:3px solid var(--accent);background:#10252a;border-radius:10px;color:#c9e9df;font-size:13px;line-height:1.8}
     footer{max-width:1080px;margin:48px auto 0;padding:22px 20px;color:var(--muted);border-top:1px solid var(--line);font-size:12px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}main{margin-top:30px}}
+    .app-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}.app-nav button{flex:1;min-width:88px}.app-nav button[aria-current="page"]{background:var(--accent);color:#06251d;font-weight:800}.app-page{display:none}.app-page.active{display:block}.app-page>section{margin-top:18px}
     .trade-workspace{margin-top:20px}.trade-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.7fr);gap:16px}
     .chart-panel{background:#0a1321;border:1px solid var(--line);border-radius:14px;padding:12px}.chart-panel svg{width:100%;height:270px;display:block}
     .trade-toolbar,.trade-tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0}.trade-toolbar select{max-width:220px}
@@ -63,6 +64,8 @@
       </section>
       <section class="panel hidden" id="accountPanel">
         <h2>ملخص الحساب</h2>
+        <nav class="app-nav" aria-label="التنقل الرئيسي"><button type="button" data-app-page="dashboard" aria-current="page">الرئيسية</button><button type="button" data-app-page="trading">التداول</button><button type="button" data-app-page="wallet">المحفظة</button><button type="button" data-app-page="admin">الإدارة</button><button type="button" data-app-page="profile">حسابي</button></nav>
+        <section id="page-dashboard" class="app-page active">
         <div class="account-line"><span>الاسم</span><strong id="accountName">—</strong></div>
         <div class="account-line"><span>البريد</span><strong id="accountEmail">—</strong></div>
         <div class="account-line"><span>نوع الحساب</span><strong id="accountRole">مستخدم</strong></div>
@@ -72,6 +75,8 @@
           <article class="card"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
         </div>
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
+        </section>
+        <section id="page-profile" class="app-page">
         <section class="subpanel">
           <h3>تغيير كلمة المرور</h3>
           <form id="changePasswordForm">
@@ -88,6 +93,8 @@
           <button type="button" id="logoutButton">تسجيل الخروج</button>
         </div>
         <div class="message" id="accountMessage" role="status" aria-live="polite"></div>
+        </section>
+        <section id="page-trading" class="app-page">
         <section id="tradingWorkspace" class="subpanel trade-workspace">
   <h3>التداول</h3>
   <p class="muted">سوق محاكاة مستقل. بوتات الأسعار تعمل من الخادم كل دقيقة حتى عند إغلاق التطبيق. الأسعار ليست أسعاراً مباشرة من الأسواق العالمية.</p>
@@ -120,10 +127,14 @@
           <h3 style="margin-top:20px">آخر الأوامر التجريبية</h3><div id="paperOrders" class="muted">—</div>
           <h3 style="margin-top:20px">سجل حركات التداول التجريبي</h3><div id="paperHistory" class="muted">جارٍ تحميل السجل...</div>
         </section>
+        </section>
+        <section id="page-wallet" class="app-page">
         <section id="ledgerPanel" class="subpanel">
           <h3>آخر حركات المحفظة</h3>
           <div id="ledgerList" class="muted">جارٍ تحميل الحركات...</div>
         </section>
+        </section>
+        <section id="page-admin" class="app-page">
         <section id="adminPanel" class="subpanel hidden">
           <h3>إدارة المستخدمين</h3>
           <p class="muted">يمكنك تفعيل الحسابات الموقوفة أو إيقاف حساب مستخدم. لا يمكن إيقاف حسابك الحالي أو آخر مدير نشط.</p>
@@ -166,6 +177,9 @@
           <div class="message" id="rateMessage" role="status" aria-live="polite"></div>
           <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
         </section>
+        </section>
+        </section>
+        </section>
       </section>
     </section>
     <section class="grid" aria-label="أقسام المنصة">
@@ -195,6 +209,7 @@
   };
   const showAccount = (data) => {
     window.__syrCurrentUserId = data.user.id;
+    window.__syrIsAdmin = data.user.role === "admin";
     $("authPanel").classList.add("hidden");
     $("accountPanel").classList.remove("hidden");
     $("accountName").textContent = data.user.displayName;
@@ -410,6 +425,7 @@
       const bot=window.__syrBotSettings?.[id];$("chartBotStatus").textContent=bot?.botEnabled?"البوت يعمل بالخلفية":"محاكاة السوق";$("chartBotStatus").classList.toggle("running",!!bot?.botEnabled);
     }catch(error){$("chartUpdated").textContent=error.message;}
   };
+  document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet")loadLedger();if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();}}));
   document.querySelectorAll("[data-trade-tab]").forEach(button=>button.addEventListener("click",()=>{const v=button.dataset.tradeTab;document.querySelectorAll("[data-trade-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));$("tradeTerminalView").classList.toggle("active",v==="terminal");$("tradePositionsView").classList.toggle("active",v==="positions");}));
   $("chartInstrument").addEventListener("change",loadTradingChart);
   $("marketBotForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("marketBotForm").querySelector('button[type="submit"]');b.disabled=true;try{await api("/api/admin/market-bot",{method:"POST",body:JSON.stringify({instrumentId:$("botInstrument").value,enabled:true,volatilityBps:Number($("botVolatility").value),driftBps:Number($("botDrift").value)})});message($("botAdminMessage"),"تم تشغيل البوت على الخادم.","success");await loadAdminMarketInstruments();await loadTradingChart();}catch(e){message($("botAdminMessage"),e.message,"error");}finally{b.disabled=false;}});
@@ -419,6 +435,7 @@
   const showAuth = () => {
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
+    window.__syrIsAdmin = false;
   };
   const api = async (path, options = {}) => {
     const response = await fetch(path, {
