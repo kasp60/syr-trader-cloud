@@ -475,7 +475,6 @@ const authApi = async (request, env, url) => {
             UNIQUE(base_symbol, quote_symbol)
           )`
         ),
-        env.DB.prepare("INSERT OR IGNORE INTO exchange_rates (id, base_symbol, quote_symbol, rate) VALUES ('usd-syp','USD','SYP',0)"),
         env.DB.prepare(
           "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)"
         ).bind(crypto.randomUUID(), userId, tokenHash, expiresAt)
