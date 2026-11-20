@@ -111,6 +111,80 @@ const currentUser = async (request, db) => {
   return result || null;
 };
 
+
+const requireSameOrigin = (request, url) => {
+  const origin = request.headers.get("Origin");
+  return Boolean(origin && origin === url.origin);
+};
+
+const walletApi = async (request, env, url) => {
+  const user = await currentUser(request, env.DB);
+  if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+
+  if (url.pathname === "/api/wallet/ledger" && request.method === "GET") {
+    const rows = await env.DB.prepare(
+      `SELECT le.id, le.entry_type AS type, le.amount_minor AS amountMinor,
+              le.reference, le.note, le.created_at AS createdAt
+       FROM ledger_entries le
+       JOIN wallets w ON w.id = le.wallet_id
+       WHERE w.user_id = ?
+       ORDER BY le.created_at DESC, le.id DESC LIMIT 100`
+    ).bind(user.id).all();
+    return json({ ok: true, entries: rows.results || [] });
+  }
+
+  if (url.pathname === "/api/admin/wallet-adjust" && request.method === "POST") {
+    if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+    if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+    let body;
+    try { body = await readJson(request); } catch { return json({ ok: false, error: "بيانات الطلب غير صحيحة" }, 400); }
+    const walletId = String(body.walletId || "");
+    const type = String(body.type || "");
+    const amountMinor = Number(body.amountMinor);
+    const note = String(body.note || "").trim();
+    const idempotencyKey = String(body.idempotencyKey || "");
+    if (!walletId || walletId.length > 80 ||
+        !["credit", "debit"].includes(type) ||
+        !Number.isSafeInteger(amountMinor) || amountMinor <= 0 ||
+        amountMinor > 1000000000000 ||
+        !/^[0-9a-f-]{36}$/i.test(idempotencyKey) ||
+        note.length > 240) {
+      return json({ ok: false, error: "تحقق من نوع الحركة والمبلغ والبيانات" }, 400);
+    }
+
+    const existing = await env.DB.prepare(
+      "SELECT id FROM ledger_entries WHERE idempotency_key = ? LIMIT 1"
+    ).bind(idempotencyKey).first();
+    if (existing) return json({ ok: false, error: "هذه الحركة مسجلة مسبقاً" }, 409);
+
+    const entryId = crypto.randomUUID();
+    const updateSql = type === "credit"
+      ? "UPDATE wallets SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ? AND balance_minor <= 9007199254740991 - ?"
+      : "UPDATE wallets SET balance_minor = balance_minor - ?, updated_at = ? WHERE id = ? AND balance_minor >= ?";
+    const results = await env.DB.batch([
+      env.DB.prepare(updateSql).bind(amountMinor, new Date().toISOString(), walletId, amountMinor),
+      env.DB.prepare(
+        `INSERT INTO ledger_entries
+          (id, wallet_id, entry_type, amount_minor, idempotency_key, created_by, note)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+         WHERE changes() = 1`
+      ).bind(entryId, walletId, type, amountMinor, idempotencyKey, user.id, note || null)
+    ]);
+    if (!results?.[0]?.meta?.changes) {
+      return json({ ok: false, error: "المحفظة غير موجودة أو الرصيد غير كافٍ" }, 409);
+    }
+    if (!results?.[1]?.meta?.changes) {
+      return json({ ok: false, error: "تعذر تسجيل الحركة" }, 409);
+    }
+    const wallet = await env.DB.prepare(
+      "SELECT balance_minor AS balanceMinor FROM wallets WHERE id = ?"
+    ).bind(walletId).first();
+    return json({ ok: true, balanceMinor: wallet?.balanceMinor ?? null, entryId });
+  }
+
+  return json({ ok: false, error: "API route not found" }, 404);
+};
+
 const authApi = async (request, env, url) => {
   if (!env.DB) return json({ ok: false, error: "Database is not configured" }, 503);
 
@@ -228,6 +302,18 @@ export default {
         });
       } catch {
         return json({ ok: false, service: "SYR TRADER", database: "unavailable" }, 503);
+      }
+    }
+
+    if (url.pathname.startsWith("/api/wallet/") || url.pathname.startsWith("/api/admin/")) {
+      try { return await walletApi(request, env, url); }
+      catch (error) {
+        console.error("SYR_TRADER_WALLET_ERROR", {
+          path: url.pathname,
+          method: request.method,
+          message: error instanceof Error ? error.message : String(error)
+        });
+        return json({ ok: false, error: "حدث خطأ داخلي، حاول مجدداً" }, 500);
       }
     }
 
