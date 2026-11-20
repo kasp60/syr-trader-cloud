@@ -696,7 +696,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=required_minor+?,reserved_minor=reserved_minor+?,updated_at=? WHERE asset_symbol=? AND required_minor=? AND reserved_minor=? AND balance_minor-reserved_minor>=?").bind(reserveLock,reserveLock,now,marginAssetSymbol,Number(required),Number(reserved),reserveLock),
       env.DB.prepare("UPDATE wallets SET balance_minor=balance_minor-?,updated_at=? WHERE id=? AND balance_minor>=? AND changes()=1").bind(marginCents,now,wallet.id,marginCents),
       env.DB.prepare("INSERT INTO paper_trades(id,user_id,instrument_id,direction,quantity_micro,entry_price_micro,leverage,margin_cents,margin_asset_symbol,liquidation_price_micro,status,opened_at) SELECT ?,?,?,?,?,?,?,?,?,?, 'open',? WHERE changes()=1").bind(tradeId,user.id,instrumentId,direction,quantityMicro,Number(entry),leverage,marginCents,marginAssetSymbol,liquidationPriceMicro,now),
-      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع"),tradeId)
+      env.DB.prepare("INSERT INTO ledger_entries(id,wallet_id,entry_type,amount_minor,idempotency_key,created_by,note) SELECT ?,?,'debit',?,?,?,? WHERE changes()=1").bind(crypto.randomUUID(),wallet.id,marginCents,"paper-trade:"+tradeId+":margin",user.id,"حجز هامش صفقة "+(direction==="long"?"شراء":"بيع"))
     ]);
     if(!results?.[2]?.meta?.changes){
       await syncPlatformReserve(env.DB);
