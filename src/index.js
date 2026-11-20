@@ -384,18 +384,6 @@ const getReserveReferenceBounds = async (db, targetOverride = null) => {
   return {minReference:Math.min(...refs),maxReference:Math.max(...refs)};
 };
 
-const tradeReserveLock = (direction, quantityMicro, entryPriceMicro, bounds) => {
-  const quantity=BigInt(quantityMicro),entry=BigInt(entryPriceMicro);
-  if(direction==="long"){
-    const upperMid=(BigInt(Math.ceil(bounds.maxReference))*10050n+9999n)/10000n;
-    const exit=marketQuote(upperMid,"bid");
-    return exit>entry?(exit-entry)*quantity/1000000000000n:0n;
-  }
-  const lowerMid=BigInt(Math.floor(bounds.minReference))*9950n/10000n;
-  const exit=marketQuote(lowerMid,"ask");
-  return exit<entry?quantity*(entry-exit)*100n/(entry*1000000n):0n;
-};
-
 const reserveRequirements = async (db, bounds) => {
   const rows=await db.prepare("SELECT direction,quantity_micro AS quantityMicro,entry_price_micro AS entryPriceMicro,margin_asset_symbol AS assetSymbol FROM paper_trades WHERE status='open' AND instrument_id='syr-usd-syp'").all();
   const totals={SYP:0n,USD:0n};
@@ -477,7 +465,7 @@ const settleLiquidatedTrades = async (db) => {
     ]);
     if(Number(result?.[1]?.meta?.changes||0)>0)liquidated++;
   }
-  await syncPlatformReserve(db,bounds);
+  try { await syncPlatformReserve(db,bounds); } catch (error) { console.error("SYR_TRADER_RESERVE_POST_LIQUIDATION_SYNC",String(error)); }
   return liquidated;
 };
 
@@ -805,7 +793,7 @@ const walletApi = async (request, env, url) => {
         .bind(crypto.randomUUID(),wallet.id,releaseCents,"paper-trade:"+tradeId+":settlement",user.id,"تسوية صفقة مغلقة",tradeId,user.id,releaseCents)
     ]);
     if(!results?.[2]?.meta?.changes)return json({ok:false,error:"تعذر إغلاق الصفقة؛ حدّث الصفحة وحاول مجدداً"},409);
-    await syncPlatformReserve(env.DB,bounds);
+    try { await syncPlatformReserve(env.DB,bounds); } catch (error) { console.error("SYR_TRADER_RESERVE_POST_CLOSE_SYNC",String(error)); }
     return json({ok:true,tradeId,pnlCents,releaseCents,marginAssetSymbol:trade.marginAssetSymbol,exitPriceMicro:Number(exitPrice),reserveLockedReleased:Number(release)});
   }
 
