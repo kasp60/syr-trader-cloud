@@ -68,11 +68,11 @@
         <section id="page-dashboard" class="app-page active">
         <div class="account-line"><span>الاسم</span><strong id="accountName">—</strong></div>
         <div class="account-line"><span>البريد</span><strong id="accountEmail">—</strong></div>
-        <div class="account-line"><span>نوع الحساب</span><strong id="accountRole">مستخدم</strong></div>
+        <div class="account-line"><span>نوع الحساب</span><strong id="accountRole">مستخدم</strong></div><div class="account-line"><span>رقم العضوية</span><strong id="memberCodeValue">—</strong></div>
         <p class="muted">المحافظ</p>
         <div class="grid" id="userWallets">
           <article class="card"><h2>الليرة</h2><div class="balance" id="sypBalance">0</div></article>
-          <article class="card"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
+          <article class="card hidden"><h2>الدولار</h2><div class="balance" id="usdBalance">0.00</div></article>
         </div>
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
         </section>
@@ -96,46 +96,67 @@
         </section>
         <section id="page-trading" class="app-page">
         <section id="tradingWorkspace" class="subpanel trade-workspace">
-  <h3>التداول</h3>
-  <p class="muted">سوق محاكاة مستقل. بوتات الأسعار تعمل من الخادم كل دقيقة حتى عند إغلاق التطبيق. الأسعار ليست أسعاراً مباشرة من الأسواق العالمية.</p>
-  <div class="trade-tabs"><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button></div>
-  <div id="tradeTerminalView" class="trade-view active">
-    <div class="trade-grid">
-      <div><div class="trade-toolbar"><label for="chartInstrument">الأداة</label><select id="chartInstrument"></select><span id="chartLastPrice" class="bot-pill">—</span><span id="chartBotStatus" class="bot-pill">محاكاة السوق</span></div>
-        <div class="chart-panel"><div class="muted">مخطط حركة السعر · آخر 180 نقطة محفوظة</div><svg id="marketChart" viewBox="0 0 900 270" role="img" aria-label="مخطط حركة السعر"><text x="450" y="135" fill="#9aabc0" text-anchor="middle">بانتظار بيانات السعر</text></svg></div><p id="chartUpdated" class="muted">يتم حفظ حركة الأسعار في قاعدة البيانات.</p>
-      </div>
-      <div class="subpanel"><h3>صفقة تجريبية</h3><div class="account-line"><span>الرصيد الافتراضي</span><strong id="terminalCash">10,000.00 USD</strong></div>
-        <form id="terminalOrderForm"><label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء</option><option value="sell">بيع</option></select><label for="terminalQuantity">الكمية</label><input id="terminalQuantity" type="number" min="0.000001" step="0.000001" required><button class="primary" type="submit">تنفيذ الصفقة</button></form><div id="terminalMessage" class="message" role="status"></div>
-      </div>
-    </div>
-  </div>
-  <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>آخر الصفقات</h3><div id="terminalOrders" class="muted">—</div></div>
-</section>
-<section id="paperMarketPanel" class="subpanel">
-          <h3>التداول التجريبي</h3>
-          <p class="muted">رصيد افتراضي منفصل عن محافظك الحقيقية. الأسعار يحددها المدير وليست أسعار سوق مباشرة.</p>
-          <div class="account-line"><span>الرصيد التجريبي بالدولار</span><strong id="paperCash">10000.00 USD</strong></div>
-          <div id="paperMarketList" class="muted">جارٍ تحميل السوق...</div>
-          <form id="paperOrderForm">
-            <label for="paperInstrument">الأداة</label><select id="paperInstrument" required></select>
-            <label for="paperSide">نوع الأمر</label><select id="paperSide"><option value="buy">شراء تجريبي</option><option value="sell">بيع تجريبي</option></select>
-            <label for="paperQuantity">الكمية</label><input id="paperQuantity" type="number" min="0.000001" step="0.000001" required>
-            <div class="form-actions"><button class="primary" type="submit">تنفيذ الأمر التجريبي</button></div>
-          </form>
-          <div id="paperMessage" class="message" role="status" aria-live="polite"></div>
-          <h3 style="margin-top:20px">المراكز التجريبية</h3><div id="paperPositions" class="muted">—</div>
-          <h3 style="margin-top:20px">آخر الأوامر التجريبية</h3><div id="paperOrders" class="muted">—</div>
-          <h3 style="margin-top:20px">سجل حركات التداول التجريبي</h3><div id="paperHistory" class="muted">جارٍ تحميل السجل...</div>
+          <h3>التداول بالليرة</h3>
+          <p class="muted">سوق واحد للدولار مقابل الليرة. المدير يحدد سعر الصرف الأولي، وبعدها يتحرك البوت تلقائياً كل دقيقة على الخادم. جميع قيم التداول معروضة بالليرة، والأسعار محاكاة وليست أسعاراً مباشرة.</p>
+          <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select><span id="chartLastPrice" class="bot-pill">بانتظار سعر الصرف</span><span id="chartBotStatus" class="bot-pill">البوت بانتظار سعر الإدارة</span></div>
+          <div class="chart-panel"><div class="muted">مخطط حركة سعر الصرف · آخر 180 نقطة</div><svg id="marketChart" viewBox="0 0 900 270" role="img" aria-label="مخطط سعر الدولار مقابل الليرة"><text x="450" y="135" fill="#9aabc0" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg></div>
+          <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
+          <div class="subpanel">
+            <h3>صفقة تجريبية</h3>
+            <div class="account-line"><span>الرصيد التجريبي</span><strong id="terminalCash">10,000 ليرة</strong></div>
+            <form id="terminalOrderForm">
+              <label for="terminalSide">العملية</label><select id="terminalSide"><option value="buy">شراء وحدات</option><option value="sell">بيع وحدات</option></select>
+              <label for="terminalQuantity">الكمية</label><input id="terminalQuantity" type="number" min="0.000001" step="0.000001" required>
+              <button class="primary" type="submit">تنفيذ الصفقة التجريبية</button>
+            </form>
+            <div id="terminalMessage" class="message" role="status"></div>
+          </div>
+          <div class="trade-tabs"><button type="button" data-trade-tab="positions" aria-pressed="false">المراكز والصفقات</button><button type="button" data-trade-tab="terminal" aria-pressed="true">منصة التداول</button></div>
+          <div id="tradePositionsView" class="trade-view"><h3>المراكز المفتوحة</h3><div id="terminalPositions" class="muted">—</div><h3>آخر الصفقات</h3><div id="terminalOrders" class="muted">—</div></div>
+          <div id="tradeTerminalView" class="trade-view active"></div>
+        </section>
+        <section id="paperMarketPanel" class="subpanel hidden" aria-hidden="true">
+          <h3>السوق الداخلي</h3><div id="paperCash">10000.00</div><div id="paperMarketList"></div>
+          <form id="paperOrderForm"><select id="paperInstrument"></select><select id="paperSide"><option value="buy">شراء</option><option value="sell">بيع</option></select><input id="paperQuantity" type="number"><button type="submit">تنفيذ</button></form>
+          <div id="paperMessage"></div><div id="paperPositions"></div><div id="paperOrders"></div><div id="paperHistory"></div>
         </section>
         </section>
         <section id="page-wallet" class="app-page">
-        <section id="ledgerPanel" class="subpanel">
-          <h3>آخر حركات المحفظة</h3>
-          <div id="ledgerList" class="muted">جارٍ تحميل الحركات...</div>
-        </section>
+          <section class="subpanel">
+            <h3>التحويل واستلام الأموال</h3>
+            <div class="notice">رقم عضويتك داخل SYR TRADER: <strong id="walletMemberCode">—</strong>. استخدمه لاستلام التحويلات من الأعضاء الآخرين.</div>
+            <h3 style="margin-top:22px">إيداع عبر Binance</h3>
+            <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أرفق صورة إثبات العملية. سيبقى طلب الإيداع قيد المراجعة ولن يضاف الرصيد إلا بعد موافقة المدير.</p>
+            <form id="depositForm">
+              <label for="depositAmount">مبلغ الإيداع بالليرة</label><input id="depositAmount" type="number" min="1" step="1" required>
+              <label for="depositProof">صورة إثبات التحويل (JPG / PNG / WEBP، حتى 850 كيلوبايت)</label><input id="depositProof" type="file" accept="image/jpeg,image/png,image/webp" required>
+              <div class="form-actions"><button class="primary" type="submit">إرسال طلب الإيداع</button></div>
+            </form>
+            <div id="depositMessage" class="message" role="status"></div>
+            <div class="divider"></div>
+            <h3 style="margin-top:22px">طلب سحب</h3>
+            <p class="muted">يُحجز المبلغ من رصيدك عند إرسال الطلب. إذا رفض المدير الطلب، يرجع المبلغ تلقائياً إلى محفظتك.</p>
+            <form id="withdrawForm">
+              <label for="withdrawAmount">مبلغ السحب بالليرة</label><input id="withdrawAmount" type="number" min="1" step="1" required>
+              <label for="withdrawDetails">بيانات الاستلام أو معرّف المحفظة</label><textarea id="withdrawDetails" rows="3" maxlength="300" required></textarea>
+              <div class="form-actions"><button type="submit">إرسال طلب السحب</button></div>
+            </form>
+            <div id="withdrawMessage" class="message" role="status"></div>
+            <div class="divider"></div>
+            <h3 style="margin-top:22px">تحويل إلى عضو</h3>
+            <form id="transferForm">
+              <label for="recipientMemberCode">رقم العضو المستلم</label><input id="recipientMemberCode" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required>
+              <label for="transferAmount">المبلغ بالليرة</label><input id="transferAmount" type="number" min="1" step="1" required>
+              <div class="form-actions"><button class="primary" type="submit">تأكيد التحويل</button></div>
+            </form>
+            <div id="transferMessage" class="message" role="status"></div>
+          </section>
+          <section class="subpanel"><h3>طلبات الإيداع والسحب والتحويلات</h3><div id="financeRequestList" class="muted">جارٍ تحميل السجل...</div></section>
+          <section id="ledgerPanel" class="subpanel"><h3>سجل حركات المحفظة</h3><div id="ledgerList" class="muted">جارٍ تحميل الحركات...</div></section>
         </section>
         <section id="page-admin" class="app-page">
         <section id="adminPanel" class="subpanel hidden">
+          <h3 style="margin-top:22px">طلبات الإيداع والسحب</h3><div id="adminFinanceRequests" class="muted">جارٍ تحميل الطلبات...</div>
           <h3>إدارة المستخدمين</h3>
           <p class="muted">يمكنك تفعيل الحسابات الموقوفة أو إيقاف حساب مستخدم. لا يمكن إيقاف حسابك الحالي أو آخر مدير نشط.</p>
           <div id="adminUsersList" class="muted">جارٍ تحميل المستخدمين...</div>
@@ -152,6 +173,7 @@
             <input id="adjustNote" maxlength="240" placeholder="سبب التعديل">
             <div class="form-actions"><button class="primary" type="submit">تأكيد الحركة</button></div>
           </form>
+          <div class="hidden" aria-hidden="true">
           <h3 style="margin-top:22px">إدارة أدوات السوق التجريبي</h3>
           <form id="instrumentForm">
             <label for="instrumentSymbol">رمز الأداة (مثل BTC)</label><input id="instrumentSymbol" maxlength="20" required>
@@ -170,11 +192,12 @@
             <div class="form-actions"><button type="submit">حفظ السعر التجريبي</button></div>
           </form>
           <div id="marketAdminMessage" class="message" role="status" aria-live="polite"></div>
+          </div>
           <h3 style="margin-top:22px">سعر صرف الدولار مقابل الليرة</h3>
           <label for="exchangeRateInput">كم ليرة تساوي دولاراً واحداً؟</label>
           <input id="exchangeRateInput" type="number" min="0.000001" step="0.01" placeholder="أدخل السعر المعتمد">
           <div class="form-actions"><button type="button" id="saveRateButton">حفظ سعر الصرف</button></div>
-          <div class="message" id="rateMessage" role="status" aria-live="polite"></div>
+          <div class="message" id="rateMessage" role="status" aria-live="polite"></div><p class="muted">عند حفظ سعر الصرف يبدأ بوت حركة السوق تلقائياً، ويعمل على الخادم حتى عند إغلاق التطبيق.</p>
           <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
         </section>
         </section>
@@ -184,7 +207,7 @@
       <article class="card"><h2>الأسواق</h2><p>سيتم عرض الأسعار بعد ربط مصدر بيانات موثوق والتحقق منه.</p></article>
       <article class="card"><h2>المحافظ</h2><p>لكل مستخدم محفظته وسجل حركاته. الرصيد الجديد يبدأ بصفر.</p></article>
     </section>
-    <div class="notice">التداول الحقيقي والإيداع والسحب غير مفعّلة. لا تنفّذ أي عملية مالية من هذه الواجهة.</div>
+    <div class="notice">الإيداع والسحب والتحويلات تخضع لمراجعة الإدارة. التداول في هذا القسم تجريبي وبالليرة فقط.</div>
   </main>
   <footer>SYR TRADER · Cloudflare Workers</footer>
 <script>
