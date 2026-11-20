@@ -147,7 +147,7 @@ const authApi = async (request, env, url) => {
           "INSERT INTO users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)"
         ).bind(userId, email, passwordDigest, displayName),
         env.DB.prepare(
-          "INSERT INTO wallets (id, user_id, asset_id, balance_minor) VALUES (?, ?, 'syr-lira', 0)"
+          "INSERT INTO wallets (id, user_id, asset_id, balance_minor) SELECT ?, ?, id, 0 FROM assets WHERE symbol = 'SYP'"
         ).bind(walletId, userId),
         env.DB.prepare(
           "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)"
