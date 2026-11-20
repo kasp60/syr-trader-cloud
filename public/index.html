@@ -105,6 +105,22 @@
     .password-toggle{position:absolute;inset-inline-end:8px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:34px;height:34px;padding:6px;border:0;border-radius:8px;background:transparent;color:#aebed2}
     .password-toggle:hover,.password-toggle:focus-visible{background:rgba(255,255,255,.08);color:#28d9b0;outline:none}
     .password-toggle svg{width:20px;height:20px;display:block}.password-toggle[aria-pressed=true] .eye-slash{display:none}
+  
+    /* Trading terminal layout: metrics above chart, order form immediately below RSI */
+    #tradingWorkspace{display:flex;flex-direction:column}
+    #tradingWorkspace>#chartStats{order:1}
+    #tradingWorkspace>#chartIndicators{order:2}
+    #tradingWorkspace>.chart-controls{order:3}
+    #tradingWorkspace>.chart-panel{order:4;display:flex;flex-direction:column}
+    #tradingWorkspace>.chart-panel>div:first-child{order:0}
+    #tradingWorkspace>.chart-panel>.chart-legend{order:1;margin:8px 0}
+    #tradingWorkspace>.chart-panel>svg{order:2}
+    #tradingWorkspace>#chartFootnote{order:6}
+    #tradingWorkspace>#chartUpdated{order:7}
+    #tradingWorkspace>.subpanel:not(#paperMarketPanel){order:5}
+    #tradingWorkspace>.trade-tabs{order:8}
+    #tradingWorkspace>#tradePositionsView,#tradingWorkspace>#tradeTerminalView{order:9}
+
   </style>
 </head>
 <body>
@@ -192,7 +208,7 @@
           <h3>التداول بالليرة</h3>
           <p class="muted">سوق واحد للدولار مقابل الليرة. المدير يحدد سعر الصرف الأولي، وبعدها يتحرك البوت تلقائياً كل دقيقة على الخادم. جميع قيم التداول معروضة بالليرة، والأسعار محاكاة وليست أسعاراً مباشرة.</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select><span id="chartLastPrice" class="bot-pill">بانتظار سعر الصرف</span><span id="chartBotStatus" class="bot-pill">البوت بانتظار سعر الإدارة</span></div>
-          <div class="chart-controls" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div><div class="chart-panel"><div class="muted">مخطط الشموع اليابانية · USD / SYP · بيانات حركة البوت</div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div><p class="chart-footnote">المؤشرات محسوبة من نقاط السعر المسجلة داخل المنصة. لا يوجد حجم تداول سوقي حقيقي لأن السوق هنا محاكاة داخلية.</p>
+          <div class="chart-controls" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div><div class="chart-panel"><div class="muted">مخطط الشموع اليابانية · USD / SYP · بيانات حركة البوت</div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div><p id="chartFootnote" class="chart-footnote">المؤشرات محسوبة من نقاط السعر المسجلة داخل المنصة. لا يوجد حجم تداول سوقي حقيقي لأن السوق هنا محاكاة داخلية.</p>
           <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
           <div class="subpanel">
