@@ -83,6 +83,15 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::webView.isInitialized) {
+            webView.post {
+                webView.evaluateJavascript("window.dispatchEvent(new Event('appresume'));", null)
+            }
+        }
+    }
+
     @Deprecated("Deprecated in Android API, retained for broad device compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
