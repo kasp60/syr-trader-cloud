@@ -302,10 +302,56 @@ const bytesToBase64 = (bytes) => {
   return btoa(binary);
 };
 
+
+const ensureTelegramPriceState = async (db) => {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS telegram_price_state (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    last_published_price_micro INTEGER,
+    last_sent_at TEXT
+  )`).run();
+};
+
+const notifyTelegramPriceChange = async (env, previousPriceMicro, currentPriceMicro) => {
+  const token=String(env.TELEGRAM_BOT_TOKEN||"").trim();
+  const channelId=String(env.TELEGRAM_CHANNEL_ID||"").trim();
+  if(!token||!channelId)return;
+  const previous=Number(previousPriceMicro),current=Number(currentPriceMicro);
+  if(!Number.isSafeInteger(current)||current<=0||!Number.isSafeInteger(previous)||previous<=0||current===previous)return;
+  const db=env.DB;
+  await ensureTelegramPriceState(db);
+  await db.prepare("INSERT OR IGNORE INTO telegram_price_state(id,last_published_price_micro,last_sent_at) VALUES(1,?,NULL)").bind(previous).run();
+  const state=await db.prepare("SELECT last_published_price_micro AS lastPrice,last_sent_at AS lastSentAt FROM telegram_price_state WHERE id=1").first();
+  const lastPrice=Number(state?.lastPrice||0);
+  if(!lastPrice||lastPrice===current)return;
+  const now=new Date().toISOString();
+  const cutoff=new Date(Date.now()-60000).toISOString();
+  const reservation=await db.prepare(`UPDATE telegram_price_state
+    SET last_published_price_micro=?,last_sent_at=?
+    WHERE id=1 AND last_published_price_micro=?
+      AND (last_sent_at IS NULL OR last_sent_at<=?)`)
+    .bind(current,now,lastPrice,cutoff).run();
+  if(Number(reservation.meta?.changes||0)!==1)return;
+  const price=(current/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+  const marker=current>lastPrice?"🔹":"🔸";
+  try {
+    const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({chat_id:channelId,text:`${marker} ${price}`,disable_web_page_preview:true})
+    });
+    const result=await response.json();
+    if(!response.ok||!result.ok)throw new Error(result.description||"Telegram send failed");
+  } catch(error) {
+    await db.prepare("UPDATE telegram_price_state SET last_published_price_micro=?,last_sent_at=NULL WHERE id=1 AND last_published_price_micro=? AND last_sent_at=?")
+      .bind(lastPrice,current,now).run();
+    console.error("SYR_TRADER_TELEGRAM_ERROR",error instanceof Error?error.message:String(error));
+  }
+};
+
 const MARKET_MAX_DEVIATION_BPS = 50; // Maximum market-price deviation: +/-0.5% around the moving admin reference.
 const MARKET_IMBALANCE_PRESSURE_BPS = 25; // Maximum directional pressure per scheduled tick at a fully one-sided book.
 
-const runScheduledMarketBots = async (db) => {
+const runScheduledMarketBots = async (db, env) => {
   await ensurePaperSchema(db);
   await ensurePlatformReserveSchema(db);
   const result = await db.prepare(`SELECT b.instrument_id AS instrumentId,b.volatility_bps AS volatilityBps,
@@ -396,7 +442,10 @@ const runScheduledMarketBots = async (db) => {
       db.prepare("UPDATE market_bots SET last_tick_at=? WHERE instrument_id=? AND enabled=1").bind(now,bot.instrumentId),
       db.prepare("UPDATE exchange_rates SET rate=?,updated_at=? WHERE base_symbol='USD' AND quote_symbol='SYP' AND EXISTS(SELECT 1 FROM market_prices WHERE instrument_id=? AND price_micro=?)").bind(next/1000000,now,bot.instrumentId,next)
     ]);
-    if(Number(batch[0]?.meta?.changes||0)>0)changed++;
+    if(Number(batch[0]?.meta?.changes||0)>0){
+      changed++;
+      await notifyTelegramPriceChange(env,previous,next);
+    }
   }
   await processPendingLimitOrders(db);
   await settleLiquidatedTrades(db);
@@ -675,11 +724,14 @@ const walletApi = async (request, env, url) => {
       if(BigInt(priceMicro)<lower||BigInt(priceMicro)>upper)
         return json({ok:false,error:"السعر اليدوي يجب أن يبقى ضمن نطاق ±0.5% من السعر المرجعي الذي حددته الإدارة."},409);
     }
+    const previousRow=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(instrumentId).first();
+    const previousPriceMicro=Number(previousRow?.priceMicro||0);
     await env.DB.prepare(`INSERT INTO market_prices (instrument_id,price_micro,updated_by,updated_at)
       VALUES (?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,
       updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
       .bind(instrumentId,priceMicro,user.id,new Date().toISOString()).run();
     await env.DB.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) VALUES (?,?,?,'manual',?)").bind(crypto.randomUUID(),instrumentId,priceMicro,new Date().toISOString()).run();
+    if(exists.symbol==="USD/SYP"&&previousPriceMicro>0)await notifyTelegramPriceChange(env,previousPriceMicro,priceMicro);
     return json({ok:true,priceMicro});
   }
 
@@ -1551,6 +1603,6 @@ export default {
     return new Response("SYR TRADER assets are not configured.", { status: 503 });
   },
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil((async()=>{const stats=await runScheduledMarketBots(env.DB);console.log("SYR_TRADER_MARKET_CRON",{scheduledTime:controller.scheduledTime,...stats});})());
+    ctx.waitUntil((async()=>{const stats=await runScheduledMarketBots(env.DB,env);console.log("SYR_TRADER_MARKET_CRON",{scheduledTime:controller.scheduledTime,...stats});})());
   }
 };
