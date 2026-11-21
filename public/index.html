@@ -213,10 +213,13 @@
     .copy-member-code{padding:6px 10px;border:1px solid rgba(40,217,176,.35);background:rgba(40,217,176,.12);color:#72f2d2;border-radius:8px;font-size:12px;white-space:nowrap}
     .member-code-copy-status{font-size:12px;color:#72f2d2}
     .account-session-actions{display:flex;flex-wrap:wrap;gap:12px}
+    #pullRefreshIndicator{position:fixed;top:10px;left:50%;z-index:1000;transform:translate(-50%,-160%);opacity:0;pointer-events:none;background:#142238;border:1px solid rgba(40,217,176,.4);color:#72f2d2;padding:9px 16px;border-radius:24px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.3);transition:transform .18s ease,opacity .18s ease;white-space:nowrap}
+    #pullRefreshIndicator.visible{transform:translate(-50%,0);opacity:1}
     .account-session-actions button{margin:0}
 </style>
 </head>
 <body>
+  <div id="pullRefreshIndicator" role="status" aria-live="polite">جاري تحديث البيانات...</div>
   <header><div class="brand">SYR <span>TRADER</span><small class="brand-powered">Powered by <strong>Kamash</strong></small></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
   <main>
     <div class="eyebrow">منصة التداول</div>
@@ -527,10 +530,18 @@
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
     } else $("adminPanel").classList.add("hidden");
   };
-  let pullStartY=0,pullTracking=false,pullRefreshing=false;
+  let pullStartY=0,pullTracking=false,pullReady=false,pullRefreshing=false;
+  const pullIndicator=$("pullRefreshIndicator");
+  const setPullStatus=(text,visible=true)=>{
+    if(!pullIndicator)return;
+    pullIndicator.textContent=text;
+    pullIndicator.classList.toggle("visible",visible);
+  };
   const refreshAppData=async()=>{
     if(pullRefreshing)return;
     pullRefreshing=true;
+    setPullStatus("جاري تحديث البيانات...");
+    let refreshed=false;
     try{
       const data=await api("/api/auth/me",{headers:{}});
       showAccount(data);
@@ -538,23 +549,44 @@
       if(activePage==="page-wallet"){await loadLedger();await loadFinanceRequests();}
       if(activePage==="page-trading"){await loadPaperMarket();await loadPaperHistory();await loadTradingChart();}
       if(activePage==="page-admin"&&window.__syrIsAdmin){await loadAdminUsers();await loadAdminWallets();await loadAdminMarketInstruments();await loadAdminFinanceRequests();await loadPlatformReserve();}
+      refreshed=true;
     }catch(error){
-      if(error?.status===401||/unauthorized|انتهت الجلسة/i.test(error?.message||"")) location.reload();
-    }finally{pullRefreshing=false;}
+      if(error?.status===401||/unauthorized|انتهت الجلسة/i.test(error?.message||"")){location.reload();return;}
+      setPullStatus("تعذّر تحديث البيانات، حاول مرة أخرى.");
+    }finally{
+      pullRefreshing=false;
+      if(refreshed)setPullStatus("تم تحديث البيانات");
+      window.setTimeout(()=>setPullStatus("",false),1800);
+    }
   };
   document.addEventListener("touchstart",event=>{
-    if(event.touches.length!==1||pullRefreshing)return;
+    if(event.touches.length!==1||pullRefreshing){pullTracking=false;pullReady=false;return;}
     const target=event.target;
-    if(target.closest("input,textarea,select,button,[contenteditable=true]")){pullTracking=false;return;}
-    pullTracking=window.scrollY<=0&&document.documentElement.scrollTop<=0;
+    if(target.closest("input,textarea,select,[contenteditable=true]")){pullTracking=false;pullReady=false;return;}
+    pullTracking=true;
+    pullReady=false;
     pullStartY=event.touches[0].clientY;
-  },{passive:true});
+  },{passive:true,capture:true});
+  document.addEventListener("touchmove",event=>{
+    if(!pullTracking||pullRefreshing||event.touches.length!==1)return;
+    const distance=event.touches[0].clientY-pullStartY;
+    if(distance>100){
+      pullReady=true;
+      if(event.cancelable)event.preventDefault();
+    }
+  },{passive:false,capture:true});
   document.addEventListener("touchend",event=>{
     if(!pullTracking||pullRefreshing)return;
     const distance=event.changedTouches[0].clientY-pullStartY;
+    const shouldRefresh=pullReady&&distance>100;
     pullTracking=false;
-    if(distance>=85)refreshAppData();
-  },{passive:true});
+    pullReady=false;
+    if(shouldRefresh)refreshAppData();
+  },{passive:true,capture:true});
+  document.addEventListener("touchcancel",()=>{
+    pullTracking=false;
+    pullReady=false;
+  },{passive:true,capture:true});
   $("copyBinanceDepositId").addEventListener("click", async () => {
     const code=$("binanceDepositId").textContent.trim(),status=$("binanceCopyStatus");
     let copied=false;
