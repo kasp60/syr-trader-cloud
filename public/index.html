@@ -464,11 +464,22 @@
   </main>
   <footer>SYR TRADER
     <span aria-hidden="true"> · </span>
-    <a href="https://t.me/syriatrader_app" target="_blank" rel="noopener noreferrer" aria-label="الانضمام إلى قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
+    <a id="telegramChannelLink" href="https://t.me/syriatrader_app" target="_blank" rel="noopener noreferrer" aria-label="الانضمام إلى قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
   </footer>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
+  const refreshTelegramChannelLink = async () => {
+    try {
+      const response = await fetch("/api/app-settings", { cache: "no-store" });
+      if (!response.ok) return;
+      const settings = await response.json();
+      const link = $("telegramChannelLink");
+      const parsed = new URL(String(settings.telegramChannelUrl || ""));
+      if (link && parsed.protocol === "https:" && parsed.hostname === "t.me") link.href = parsed.href;
+    } catch (_) { /* Keep the safe built-in channel link when settings cannot load. */ }
+  };
+  refreshTelegramChannelLink();
   let mode = "login";
   let currentWalletRate = 0;
   const message = (target, text, kind = "") => {
