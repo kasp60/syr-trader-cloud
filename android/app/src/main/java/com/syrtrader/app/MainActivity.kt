@@ -25,9 +25,9 @@ class MainActivity : Activity() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(WebView(this), true)
 
         webView = WebView(this)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.setBackgroundColor(android.graphics.Color.rgb(8, 15, 28))
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
