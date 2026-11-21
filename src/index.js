@@ -437,13 +437,6 @@ const runScheduledMarketBots = async (db, env) => {
       riskUpperBound=Math.max(lowerBound,safeUpper);
       next=Math.min(next,riskUpperBound);
     }
-    // If rounding/reversion produces a flat tick, move by one displayed quote
-    // tick (0.01 SYP) while staying inside market and liquidation safety bounds.
-    if(next===previous){
-      const oneVisibleTick=10000;
-      const direction=noise>=0?1:-1;
-      next=Math.max(riskLowerBound,Math.min(riskUpperBound,previous+direction*oneVisibleTick));
-    }
     if(!Number.isSafeInteger(next)||next<=0||next===previous)continue;
     const now=new Date().toISOString();
     const batch=await db.batch([
