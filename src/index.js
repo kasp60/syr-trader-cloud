@@ -481,12 +481,14 @@ const reserveRequirements = async (db, bounds) => {
 const syncPlatformReserve = async (db, bounds=null) => {
   const refBounds=bounds||await getReserveReferenceBounds(db);
   const required=await reserveRequirements(db,refBounds);
-  for(const asset of ["SYP","USD"]){
+  const now=new Date().toISOString();
+  const updates=["SYP","USD"].map(asset=>{
     const amount=Number(required[asset]);
     if(!Number.isSafeInteger(amount)||amount<0)throw new Error("قيمة التغطية المطلوبة خارج النطاق");
-    await db.prepare("UPDATE platform_reserve_balances SET required_minor=?,reserved_minor=MIN(balance_minor,?),updated_at=? WHERE asset_symbol=?")
-      .bind(amount,amount,new Date().toISOString(),asset).run();
-  }
+    return db.prepare("UPDATE platform_reserve_balances SET required_minor=?,reserved_minor=MIN(balance_minor,?),updated_at=? WHERE asset_symbol=?")
+      .bind(amount,amount,now,asset);
+  });
+  await db.batch(updates);
   return required;
 };
 
