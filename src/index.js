@@ -444,7 +444,7 @@ const runScheduledMarketBots = async (db, env) => {
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0){
       changed++;
-      await notifyTelegramPriceChange(env,previous,next);
+      await notifyTelegramPriceChange(env,previous,next).catch(error=>console.error("SYR_TRADER_TELEGRAM_STATE_ERROR",error instanceof Error?error.message:String(error)));
     }
   }
   await processPendingLimitOrders(db);
@@ -731,7 +731,7 @@ const walletApi = async (request, env, url) => {
       updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
       .bind(instrumentId,priceMicro,user.id,new Date().toISOString()).run();
     await env.DB.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) VALUES (?,?,?,'manual',?)").bind(crypto.randomUUID(),instrumentId,priceMicro,new Date().toISOString()).run();
-    if(exists.symbol==="USD/SYP"&&previousPriceMicro>0)await notifyTelegramPriceChange(env,previousPriceMicro,priceMicro);
+    if(exists.symbol==="USD/SYP"&&previousPriceMicro>0)await notifyTelegramPriceChange(env,previousPriceMicro,priceMicro).catch(error=>console.error("SYR_TRADER_TELEGRAM_STATE_ERROR",error instanceof Error?error.message:String(error)));
     return json({ok:true,priceMicro});
   }
 
