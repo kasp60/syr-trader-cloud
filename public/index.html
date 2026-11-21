@@ -526,6 +526,34 @@
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
     } else $("adminPanel").classList.add("hidden");
   };
+  let pullStartY=0,pullTracking=false,pullRefreshing=false;
+  const refreshAppData=async()=>{
+    if(pullRefreshing)return;
+    pullRefreshing=true;
+    try{
+      const data=await api("/api/auth/me",{headers:{}});
+      showAccount(data);
+      const activePage=document.querySelector(".app-page.active")?.id;
+      if(activePage==="page-wallet"){await loadLedger();await loadFinanceRequests();}
+      if(activePage==="page-trading"){await loadPaperMarket();await loadPaperHistory();await loadTradingChart();}
+      if(activePage==="page-admin"&&window.__syrIsAdmin){await loadAdminUsers();await loadAdminWallets();await loadAdminMarketInstruments();await loadAdminFinanceRequests();await loadPlatformReserve();}
+    }catch(error){
+      if(error?.status===401||/unauthorized|انتهت الجلسة/i.test(error?.message||"")) location.reload();
+    }finally{pullRefreshing=false;}
+  };
+  document.addEventListener("touchstart",event=>{
+    if(event.touches.length!==1||pullRefreshing)return;
+    const target=event.target;
+    if(target.closest("input,textarea,select,button,[contenteditable=true]")){pullTracking=false;return;}
+    pullTracking=window.scrollY<=0&&document.documentElement.scrollTop<=0;
+    pullStartY=event.touches[0].clientY;
+  },{passive:true});
+  document.addEventListener("touchend",event=>{
+    if(!pullTracking||pullRefreshing)return;
+    const distance=event.changedTouches[0].clientY-pullStartY;
+    pullTracking=false;
+    if(distance>=85)refreshAppData();
+  },{passive:true});
   $("copyWalletMemberCode").addEventListener("click", async () => {
     const code = $("walletMemberCode").textContent.trim();
     const status = $("memberCodeCopyStatus");
