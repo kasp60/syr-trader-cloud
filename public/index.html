@@ -580,6 +580,9 @@
     if(event.touches.length!==1||pullRefreshing)return;
     const target=event.target;
     if(target.closest("button,a,input,textarea,select,summary,[role=button],[contenteditable=true]"))return;
+    const scrollable=target.closest(".app-page,[data-scroll-container]");
+    const atTop=scrollable?scrollable.scrollTop<=0:window.scrollY<=0;
+    if(!atTop)return;
     pullTracking=true;
     pullStartY=event.touches[0].clientY;
     pullStartX=event.touches[0].clientX;
@@ -593,7 +596,7 @@
     if(distance>=110){
       if(!pullReady){
         pullReady=true;
-        setPullStatus("اترك الشاشة لتحديث البيانات");
+        setPullStatus("اسحب للتحديث");
       }
       if(event.cancelable)event.preventDefault();
     }else if(pullReady){
