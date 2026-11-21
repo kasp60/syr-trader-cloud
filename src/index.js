@@ -1539,9 +1539,54 @@ const authApi = async (request, env, url) => {
   return json({ ok: false, error: "API route not found" }, 404);
 };
 
+
+const ensureAppSettingsSchema = async (db) => {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS app_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_by TEXT REFERENCES users(id)
+  )`).run();
+  await db.prepare("INSERT OR IGNORE INTO app_settings(setting_key,setting_value) VALUES('telegram_channel_url','https://t.me/syriatrader_app')").run();
+};
+
+const appSettingsApi = async (request, env, url) => {
+  if (!env.DB) return json({ ok: false, error: "قاعدة البيانات غير متاحة" }, 503);
+  await ensureAppSettingsSchema(env.DB);
+  if (request.method === "GET") {
+    const row = await env.DB.prepare("SELECT setting_value AS telegramChannelUrl FROM app_settings WHERE setting_key='telegram_channel_url' LIMIT 1").first();
+    return json({ ok: true, telegramChannelUrl: row?.telegramChannelUrl || "https://t.me/syriatrader_app" });
+  }
+  if (request.method !== "PUT") return json({ ok: false, error: "الطريقة غير مدعومة" }, 405, { allow: "GET, PUT" });
+  if (!requireSameOrigin(request, url)) return json({ ok: false, error: "طلب غير موثوق" }, 403);
+  const user = await currentUser(request, env.DB);
+  if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+  if (user.role !== "admin") return json({ ok: false, error: "غير مصرح" }, 403);
+  let body;
+  try { body = await readJson(request); } catch { return json({ ok: false, error: "بيانات الطلب غير صحيحة" }, 400); }
+  const channelUrl = String(body.telegramChannelUrl || "").trim();
+  let parsed;
+  try { parsed = new URL(channelUrl); } catch { return json({ ok: false, error: "رابط تيليجرام غير صالح" }, 400); }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "t.me" || parsed.search || parsed.hash ||
+      !/^(?:[A-Za-z0-9_]{5,64}|\\+[A-Za-z0-9_-]{8,})$/.test(parsed.pathname.replace(/^\\//, ""))) {
+    return json({ ok: false, error: "استخدم رابط قناة تيليجرام صالحاً من t.me" }, 400);
+  }
+  await env.DB.prepare("INSERT INTO app_settings(setting_key,setting_value,updated_at,updated_by) VALUES('telegram_channel_url',?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at,updated_by=excluded.updated_by")
+    .bind(channelUrl,new Date().toISOString(),user.id).run();
+  return json({ ok: true, telegramChannelUrl: channelUrl });
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/app-settings") {
+      try { return await appSettingsApi(request, env, url); }
+      catch (error) {
+        console.error("SYR_TRADER_APP_SETTINGS_ERROR", error instanceof Error ? error.message : String(error));
+        return json({ ok: false, error: "تعذر تحميل إعدادات التطبيق" }, 500);
+      }
+    }
 
     if (url.pathname === "/api/health") {
       try {
