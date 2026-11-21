@@ -572,10 +572,7 @@
   });
   window.addEventListener("pageshow",refreshWhenAppResumes);
   window.addEventListener("appresume",refreshWhenAppResumes);
-  const resetPullGesture=()=>{
-    pullTracking=false;pullReady=false;
-    if(pullHoldTimer){clearTimeout(pullHoldTimer);pullHoldTimer=null;}
-  };
+  const resetPullGesture=()=>{pullTracking=false;pullReady=false;};
   document.addEventListener("touchstart",event=>{
     resetPullGesture();
     if(event.touches.length!==1||pullRefreshing)return;
@@ -595,26 +592,23 @@
     const horizontal=Math.abs(touch.clientX-pullStartX);
     if(horizontal>70){resetPullGesture();return;}
     if(distance>=125){
-      if(!pullReady){
-        pullReady=true;
-        setPullStatus("ابقَ للحظة للتحديث");
-        pullHoldTimer=window.setTimeout(()=>{
-          if(!pullTracking||!pullReady||pullRefreshing)return;
-          resetPullGesture();
-          refreshAppData();
-        },1200);
-      }
+      pullReady=true;
+      setPullStatus("اسحب للأسفل ثم اترك للتحديث");
       if(event.cancelable)event.preventDefault();
     }else if(pullReady){
       pullReady=false;
-      if(pullHoldTimer){clearTimeout(pullHoldTimer);pullHoldTimer=null;}
       setPullStatus("",false);
     }
   },{passive:false,capture:true});
-  document.addEventListener("touchend",()=>{
-    if(!pullTracking)return;
+  document.addEventListener("touchend",event=>{
+    if(!pullTracking||pullRefreshing)return;
+    const touch=event.changedTouches[0];
+    const distance=touch.clientY-pullStartY;
+    const horizontal=Math.abs(touch.clientX-pullStartX);
+    const shouldRefresh=pullReady&&distance>=125&&horizontal<70;
     resetPullGesture();
     setPullStatus("",false);
+    if(shouldRefresh)refreshAppData();
   },{passive:true,capture:true});
   document.addEventListener("touchcancel",resetPullGesture,{passive:true,capture:true});
   $("copyBinanceDepositId").addEventListener("click", async () => {
