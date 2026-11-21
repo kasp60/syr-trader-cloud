@@ -1567,8 +1567,11 @@ const appSettingsApi = async (request, env, url) => {
   const channelUrl = String(body.telegramChannelUrl || "").trim();
   let parsed;
   try { parsed = new URL(channelUrl); } catch { return json({ ok: false, error: "رابط تيليجرام غير صالح" }, 400); }
+  const segment = parsed.pathname.slice(1);
+  const validUsername = /^[A-Za-z0-9_]{5,64}$/.test(segment);
+  const validInvite = segment.startsWith("+") && /^[A-Za-z0-9_-]{8,}$/.test(segment.slice(1));
   if (parsed.protocol !== "https:" || parsed.hostname !== "t.me" || parsed.search || parsed.hash ||
-      !/^(?:[A-Za-z0-9_]{5,64}|\\+[A-Za-z0-9_-]{8,})$/.test(parsed.pathname.replace(/^\\//, ""))) {
+      (!validUsername && !validInvite)) {
     return json({ ok: false, error: "استخدم رابط قناة تيليجرام صالحاً من t.me" }, 400);
   }
   await env.DB.prepare("INSERT INTO app_settings(setting_key,setting_value,updated_at,updated_by) VALUES('telegram_channel_url',?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at,updated_by=excluded.updated_by")
