@@ -772,7 +772,10 @@ const walletApi = async (request, env, url) => {
       return json({ok:false,error:"أدخل مبلغ الهامش بشكل صحيح وحدد رافعة من 1x إلى 20x"},400);
     const hasValidPrecision=direction==="long"?Number.isSafeInteger(marginAmount):Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
     if(!hasValidPrecision)return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
-    const instrument=await env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first();
+    const [instrument]=await Promise.all([
+      env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first(),
+      getReserveReferenceBounds(env.DB)
+    ]);
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
     const marginAssetSymbol=direction==="long"?"SYP":"USD";
     const marginMinor=BigInt(Math.round(marginAmount*(direction==="long"?1:100)));
@@ -867,16 +870,20 @@ const walletApi = async (request, env, url) => {
     if(!tradeId||tradeId.length>80)return json({ok:false,error:"رقم الصفقة غير صحيح"},400);
     const trade=await env.DB.prepare("SELECT id,instrument_id,direction,quantity_micro AS quantityMicro,entry_price_micro AS entryPriceMicro,margin_cents AS marginCents,margin_asset_symbol AS marginAssetSymbol FROM paper_trades WHERE id=? AND user_id=? AND status='open'").bind(tradeId,user.id).first();
     if(!trade)return json({ok:false,error:"الصفقة مغلقة أو تمت تصفيتها أو غير موجودة"},404);
-    const price=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first();
+    const [price,reserveState,wallet,boundsResult]=await Promise.all([
+      env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(trade.instrument_id).first(),
+      env.DB.prepare("SELECT reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(trade.marginAssetSymbol).first(),
+      env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,trade.marginAssetSymbol).first(),
+      getReserveReferenceBounds(env.DB).then(value=>({value})).catch(error=>({error}))
+    ]);
     if(!price)return json({ok:false,error:"السعر الحالي غير متاح"},409);
     let bounds=null,lock=0n;
-    try {
-      bounds=await getReserveReferenceBounds(env.DB);
+    if(boundsResult.value){
+      bounds=boundsResult.value;
       lock=tradeReserveLock(trade.direction,trade.quantityMicro,trade.entryPriceMicro,bounds);
-    } catch (error) {
-      console.error("SYR_TRADER_RESERVE_CLOSE_SYNC",String(error));
+    }else{
+      console.error("SYR_TRADER_RESERVE_CLOSE_SYNC",String(boundsResult.error));
     }
-    const reserveState=await env.DB.prepare("SELECT reserved_minor AS reservedMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(trade.marginAssetSymbol).first();
     const maxRelease=BigInt(Math.max(0,Number(reserveState?.reservedMinor||0)));
     const release=lock<maxRelease?lock:maxRelease;
     const exitPrice=marketQuote(price.priceMicro,trade.direction==="long"?"bid":"ask"),delta=exitPrice-BigInt(trade.entryPriceMicro);
@@ -884,7 +891,6 @@ const walletApi = async (request, env, url) => {
     const margin=BigInt(trade.marginCents),pnl=rawPnl < -margin ? -margin : rawPnl;
     const safePnl=pnl>9007199254740991n-margin?9007199254740991n-margin:pnl;
     const pnlCents=Number(safePnl),releaseCents=Number(margin+safePnl),now=new Date().toISOString();
-    const wallet=await env.DB.prepare("SELECT w.id FROM wallets w JOIN assets a ON a.id=w.asset_id WHERE w.user_id=? AND a.symbol=?").bind(user.id,trade.marginAssetSymbol).first();
     if(!wallet)return json({ok:false,error:"محفظة الصفقة غير موجودة"},409);
     const reservePnl=BigInt(pnlCents),payout=reservePnl>0n?reservePnl:0n,gain=reservePnl<0n?-reservePnl:0n;
     const results=await env.DB.batch([
