@@ -44,7 +44,7 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
                 val host = uri.host.orEmpty()
-                return if (host == "syr-trader-cloud.kamalkhtib1.workers.dev") {
+                return if (host == "syr-trader-cloud.syrtrader.workers.dev") {
                     false
                 } else {
                     try {
@@ -77,7 +77,7 @@ class MainActivity : Activity() {
         webView.isFocusableInTouchMode = true
         setContentView(webView)
         if (savedInstanceState == null) {
-            webView.loadUrl("https://syr-trader-cloud.kamalkhtib1.workers.dev")
+            webView.loadUrl("https://syr-trader-cloud.syrtrader.workers.dev")
         } else {
             webView.restoreState(savedInstanceState)
         }
