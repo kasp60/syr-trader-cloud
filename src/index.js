@@ -415,6 +415,7 @@ const runScheduledMarketBots = async (db, env) => {
 
     // During the scheduled pulse only, avoid pushing an existing position
     // through its liquidation quote; normal market risk rules remain unchanged.
+    let riskLowerBound=lowerBound,riskUpperBound=upperBound;
     if(dailyEventBps<0){
       let safeLower=lowerBound;
       for(const position of (positions.results||[])){
@@ -423,7 +424,8 @@ const runScheduledMarketBots = async (db, env) => {
         const threshold=((liquidation+1n)*10000n+9989n)/9990n;
         if(threshold>BigInt(safeLower))safeLower=Number(threshold);
       }
-      next=Math.max(next,Math.min(upperBound,safeLower));
+      riskLowerBound=Math.min(upperBound,safeLower);
+      next=Math.max(next,riskLowerBound);
     }else if(dailyEventBps>0){
       let safeUpper=upperBound;
       for(const position of (positions.results||[])){
@@ -432,7 +434,15 @@ const runScheduledMarketBots = async (db, env) => {
         const threshold=((liquidation-1n)*10000n)/10010n;
         if(threshold<BigInt(safeUpper))safeUpper=Number(threshold);
       }
-      next=Math.min(next,Math.max(lowerBound,safeUpper));
+      riskUpperBound=Math.max(lowerBound,safeUpper);
+      next=Math.min(next,riskUpperBound);
+    }
+    // If rounding/reversion produces a flat tick, move by one displayed quote
+    // tick (0.01 SYP) while staying inside market and liquidation safety bounds.
+    if(next===previous){
+      const oneVisibleTick=10000;
+      const direction=noise>=0?1:-1;
+      next=Math.max(riskLowerBound,Math.min(riskUpperBound,previous+direction*oneVisibleTick));
     }
     if(!Number.isSafeInteger(next)||next<=0||next===previous)continue;
     const now=new Date().toISOString();
