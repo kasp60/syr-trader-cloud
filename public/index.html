@@ -530,7 +530,7 @@
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
     } else $("adminPanel").classList.add("hidden");
   };
-  let pullStartY=0,pullStartX=0,pullTracking=false,pullReady=false,pullRefreshing=false;
+  let pullStartY=0,pullStartX=0,pullTracking=false,pullReady=false,pullRefreshing=false,pullHoldTimer=null;
   const pullIndicator=$("pullRefreshIndicator");
   const setPullStatus=(text,visible=true)=>{
     if(!pullIndicator)return;
@@ -559,7 +559,10 @@
       window.setTimeout(()=>setPullStatus("",false),1800);
     }
   };
-  const resetPullGesture=()=>{pullTracking=false;pullReady=false;};
+  const resetPullGesture=()=>{
+    if(pullHoldTimer!==null)window.clearTimeout(pullHoldTimer);
+    pullHoldTimer=null;pullTracking=false;pullReady=false;
+  };
   document.addEventListener("touchstart",event=>{
     resetPullGesture();
     if(event.touches.length!==1||pullRefreshing)return;
@@ -576,18 +579,27 @@
     const horizontal=Math.abs(touch.clientX-pullStartX);
     if(horizontal>70){resetPullGesture();return;}
     if(distance>=130){
-      pullReady=true;
+      if(!pullReady){
+        pullReady=true;
+        setPullStatus("ابقَ ساحِباً للأسفل 3 ثوانٍ لتحديث البيانات");
+        pullHoldTimer=window.setTimeout(()=>{
+          if(pullTracking&&pullReady&&!pullRefreshing){
+            resetPullGesture();
+            refreshAppData();
+          }
+        },3000);
+      }
       if(event.cancelable)event.preventDefault();
+    }else if(pullReady){
+      if(pullHoldTimer!==null)window.clearTimeout(pullHoldTimer);
+      pullHoldTimer=null;pullReady=false;
+      setPullStatus("",false);
     }
   },{passive:false,capture:true});
-  document.addEventListener("touchend",event=>{
-    if(!pullTracking||pullRefreshing)return;
-    const touch=event.changedTouches[0];
-    const distance=touch.clientY-pullStartY;
-    const horizontal=Math.abs(touch.clientX-pullStartX);
-    const shouldRefresh=pullReady&&distance>=130&&horizontal<70;
+  document.addEventListener("touchend",()=>{
+    if(!pullTracking)return;
     resetPullGesture();
-    if(shouldRefresh)refreshAppData();
+    setPullStatus("",false);
   },{passive:true,capture:true});
   document.addEventListener("touchcancel",resetPullGesture,{passive:true,capture:true});
   $("copyBinanceDepositId").addEventListener("click", async () => {
