@@ -198,7 +198,17 @@
       margin:0 0 20px!important;padding:6px!important;
     }
     #accountPanel .account-hero{position:relative!important;margin:0 0 18px!important;}
-  </style>
+  
+    /* Compact wallet history, member-code copy, and account action spacing */
+    #ledgerList{height:240px;max-height:240px;overflow-y:auto;overscroll-behavior:contain;padding-inline-end:8px;scrollbar-width:thin;scrollbar-color:#526b82 transparent}
+    #ledgerList::-webkit-scrollbar{width:6px}
+    #ledgerList::-webkit-scrollbar-thumb{background:#526b82;border-radius:8px}
+    .member-code-notice{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+    .copy-member-code{padding:6px 10px;border:1px solid rgba(40,217,176,.35);background:rgba(40,217,176,.12);color:#72f2d2;border-radius:8px;font-size:12px;white-space:nowrap}
+    .member-code-copy-status{font-size:12px;color:#72f2d2}
+    .account-session-actions{display:flex;flex-wrap:wrap;gap:12px}
+    .account-session-actions button{margin:0}
+</style>
 </head>
 <body>
   <header><div class="brand">SYR <span>TRADER</span><small class="brand-powered">Powered by <strong>Kamash</strong></small></div><div class="status" id="serverStatus">جاري الاتصال...</div></header>
@@ -238,7 +248,7 @@
         </div>
         <section class="subpanel wallet-exchange">
           <h3>تحويل بين الأرصدة</h3>
-          <p class="muted">حوّل بين الدولار والليرة حسب سعر الصرف الذي يحدده المدير. تتم الحركة فوراً ويُسجّل طرفا التحويل في سجل المحفظة.</p>
+          <p class="muted">حوّل بين الدولار والليرة. تتم الحركة فوراً ويُسجّل طرفا التحويل في سجل المحفظة.</p>
           <form id="walletExchangeForm">
             <label for="exchangeDirection">اتجاه التحويل</label>
             <select id="exchangeDirection"><option value="USD_TO_SYP">من الدولار إلى الليرة</option><option value="SYP_TO_USD">من الليرة إلى الدولار</option></select>
@@ -252,7 +262,7 @@
         <div class="notice" id="exchangeRateView">سعر الصرف غير محدد من الإدارة بعد.</div>
         <section class="subpanel" id="performancePanel" aria-live="polite">
           <h3>أداء التداول والتنبيهات</h3>
-          <p class="muted">ملخص محسوب من صفقاتك المسجلة داخل المنصة، وليس من سوق خارجي.</p>
+          <p class="muted">ملخص محسوب من صفقاتك المسجلة داخل المنصة.</p>
           <div class="performance-grid">
             <div class="performance-card"><span>إجمالي الصفقات المغلقة</span><strong id="perfClosed">—</strong></div>
             <div class="performance-card"><span>نسبة الصفقات الرابحة</span><strong id="perfWinRate">—</strong></div>
@@ -274,7 +284,7 @@
           </form>
           <div class="message" id="passwordMessage" role="status" aria-live="polite"></div>
         </section>
-        <div class="form-actions">
+        <div class="form-actions account-session-actions">
           <button type="button" id="logoutOthersButton">إنهاء الجلسات الأخرى</button>
           <button type="button" id="logoutButton">تسجيل الخروج</button>
         </div>
@@ -284,14 +294,13 @@
         <section id="tradingWorkspace" class="subpanel trade-workspace">
           <h3>التداول بالليرة</h3>
           <p class="muted">تداول الدولار مقابل الليرة ضمن سوق المنصة، مع عرض الأسعار ومؤشرات السوق ومتابعة صفقاتك من مكان واحد.</p>
-          <p class="muted">يتأثر السعر الداخلي بتوازن مراكز الشراء والبيع ضمن نطاق السعر المرجعي الذي تحدده الإدارة (±0.5%).</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select></div>
           <div class="chart-controls" aria-label="إعدادات الشارت"><div class="chart-control-row chart-range-row" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة الزمنية:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button></div><div class="chart-control-row chart-count-row" aria-label="عدد الشموع"><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div></div><div class="chart-panel"><div class="chart-heading"><strong>مخطط الشموع اليابانية · USD / SYP</strong><span id="chartLastPrice" class="price-up">بانتظار السعر</span></div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div>
           <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
           <div class="subpanel">
             <h3>فتح صفقة</h3>
-            <div class="trade-wallet-balances"><div><span>رصيد الليرة</span><strong id="terminalSypBalance">—</strong></div><div><span>رصيد الدولار</span><strong id="terminalUsdBalance">—</strong></div></div><div class="notice">يُحجز الهامش من المحفظة المناسبة، وتُسجّل الأرباح والخسائر في رصيدك داخل المنصة. تُحتسب نتائج الصفقات وفق أسعار السوق المعروضة في SYR TRADER، ولا تُنفذ الأوامر في بورصات خارجية.</div>
+            <div class="trade-wallet-balances"><div><span>رصيد الليرة</span><strong id="terminalSypBalance">—</strong></div><div><span>رصيد الدولار</span><strong id="terminalUsdBalance">—</strong></div></div><div class="notice">يُحجز الهامش من المحفظة المناسبة، وتُسجّل الأرباح والخسائر في رصيدك داخل المنصة. تُحتسب نتائج الصفقات وفق أسعار السوق المعروضة في SYR TRADER.</div>
             <form id="terminalOrderForm">
               <label>نوع الصفقة</label><div class="trade-side-actions"><button type="button" id="terminalBuyButton" class="trade-side-button buy active" aria-pressed="true">شراء · LONG</button><button type="button" id="terminalSellButton" class="trade-side-button sell" aria-pressed="false">بيع · SHORT</button></div><input id="terminalSide" type="hidden" value="buy">
               <label for="terminalOrderType">طريقة تنفيذ الصفقة</label><select id="terminalOrderType"><option value="market">تنفيذ فوري بسعر السوق</option><option value="limit">أمر معلّق بسعر أحدده</option></select>
@@ -317,7 +326,7 @@
         <section id="page-wallet" class="app-page">
           <section class="subpanel">
             <h3>التحويل واستلام الأموال</h3>
-            <div class="notice">رقم عضويتك داخل SYR TRADER: <strong id="walletMemberCode">—</strong>. استخدمه لاستلام التحويلات من الأعضاء الآخرين.</div>
+            <div class="notice member-code-notice">رقم عضويتك داخل SYR TRADER: <strong id="walletMemberCode">—</strong> <button type="button" id="copyWalletMemberCode" class="copy-member-code" aria-label="نسخ رقم العضوية">نسخ الرقم</button>. استخدمه لاستلام التحويلات من الأعضاء الآخرين.<span id="memberCodeCopyStatus" class="member-code-copy-status" role="status" aria-live="polite"></span></div>
             <h3 style="margin-top:22px">إيداع عبر Binance</h3>
             <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أدخل مبلغ الإيداع بالدولار وأرفق صورة إثبات العملية. بعد تحقق المدير من وصول الحوالة وموافقته، يُضاف المبلغ إلى محفظة الدولار.</p>
             <form id="depositForm">
@@ -435,7 +444,6 @@
       </section>
     </section>
     <section class="grid" aria-label="أقسام المنصة">
-      <article class="card"><h2>الأسواق</h2><p>تابع سعر الدولار مقابل الليرة ومؤشرات السوق من مكان واحد.</p></article>
       <article class="card"><h2>المحافظ</h2><p>لكل مستخدم محفظته وسجل حركاته. الرصيد الجديد يبدأ بصفر.</p></article>
     </section>
     <div class="notice">تخضع طلبات الإيداع والسحب لمراجعة الإدارة. تُعرض أرصدة التداول بالليرة وفق سعر الصرف المعتمد في المنصة.</div>
@@ -503,9 +511,35 @@
     loadPaperMarket();
     loadPaperHistory();
     loadTradingChart();
-    if (data.user.role === "admin") { loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests(); }
-    else $("adminPanel").classList.add("hidden");
+    if (data.user.role === "admin") {
+      $("adminPanel").classList.remove("hidden");
+      loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
+    } else $("adminPanel").classList.add("hidden");
   };
+  $("copyWalletMemberCode").addEventListener("click", async () => {
+    const code = $("walletMemberCode").textContent.trim();
+    const status = $("memberCodeCopyStatus");
+    if (!code || code === "—") { status.textContent = "رقم العضوية غير متاح."; return; }
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+        copied = true;
+      }
+    } catch (_) {}
+    if (!copied) {
+      const field = document.createElement("textarea");
+      field.value = code;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      try { copied = document.execCommand("copy"); } catch (_) {}
+      field.remove();
+    }
+    status.textContent = copied ? "تم نسخ رقم العضوية." : "تعذر النسخ؛ حاول مرة أخرى.";
+  });
   const addTextRow = (container, left, right, className = "ledger-row") => {
     const row = document.createElement("div");
     row.className = className;
