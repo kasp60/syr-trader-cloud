@@ -610,6 +610,23 @@ const walletApi = async (request, env, url) => {
     const rows=await env.DB.prepare("SELECT price_micro AS priceMicro,created_at AS createdAt,source FROM market_price_history WHERE instrument_id='syr-usd-syp' ORDER BY created_at DESC LIMIT 1440").all();
     return json({ok:true,points:(rows.results||[]).reverse()});
   }
+  if (url.pathname === "/api/market/quotes" && request.method === "GET") {
+    const rows=await env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
+      t.entry_price_micro AS entryPriceMicro,t.margin_asset_symbol AS marginAssetSymbol,
+      p.price_micro AS midPriceMicro,p.updated_at AS priceUpdatedAt
+      FROM paper_trades t
+      JOIN market_prices p ON p.instrument_id=t.instrument_id
+      WHERE t.user_id=? AND t.status='open'
+      ORDER BY t.opened_at DESC LIMIT 100`).bind(user.id).all();
+    const openTrades=(rows.results||[]).map(t=>({
+      id:t.id,direction:t.direction,quantityMicro:t.quantityMicro,
+      entryPriceMicro:t.entryPriceMicro,marginAssetSymbol:t.marginAssetSymbol,
+      currentPriceMicro:Number(marketQuote(t.midPriceMicro,t.direction==="long"?"bid":"ask")),
+      priceUpdatedAt:t.priceUpdatedAt
+    }));
+    return json({ok:true,openTrades});
+  }
+
   if (url.pathname === "/api/market/board" && request.method === "GET") {
     await processPendingLimitOrders(env.DB);
     await settleLiquidatedTrades(env.DB);
