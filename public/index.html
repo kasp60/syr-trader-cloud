@@ -537,10 +537,10 @@
     pullIndicator.textContent=text;
     pullIndicator.classList.toggle("visible",visible);
   };
-  const refreshAppData=async()=>{
+  const refreshAppData=async({silent=false}={})=>{
     if(pullRefreshing)return;
     pullRefreshing=true;
-    setPullStatus("جاري تحديث البيانات...");
+    if(!silent)setPullStatus("جاري تحديث البيانات...");
     let refreshed=false;
     try{
       const data=await api("/api/auth/me",{headers:{}});
@@ -552,11 +552,13 @@
       refreshed=true;
     }catch(error){
       if(error?.status===401||/unauthorized|انتهت الجلسة/i.test(error?.message||"")){location.reload();return;}
-      setPullStatus("تعذّر تحديث البيانات، حاول مرة أخرى.");
+      if(!silent)setPullStatus("تعذّر تحديث البيانات، حاول مرة أخرى.");
     }finally{
       pullRefreshing=false;
-      if(refreshed)setPullStatus("تم تحديث البيانات");
-      window.setTimeout(()=>setPullStatus("",false),1800);
+      if(!silent){
+        if(refreshed)setPullStatus("تم تحديث البيانات");
+        window.setTimeout(()=>setPullStatus("",false),1800);
+      }
     }
   };
   let lastResumeRefreshAt=0;
@@ -565,7 +567,7 @@
     const now=Date.now();
     if(now-lastResumeRefreshAt<5000)return;
     lastResumeRefreshAt=now;
-    refreshAppData();
+    refreshAppData({silent:true});
   };
   document.addEventListener("visibilitychange",()=>{
     if(document.visibilityState==="visible")refreshWhenAppResumes();
