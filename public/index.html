@@ -530,7 +530,7 @@
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
     } else $("adminPanel").classList.add("hidden");
   };
-  let pullStartY=0,pullStartX=0,pullTracking=false,pullReady=false,pullRefreshing=false;
+  let pullStartY=0,pullStartX=0,pullTracking=false,pullReady=false,pullRefreshing=false,pullHoldTimer=null;
   const pullIndicator=$("pullRefreshIndicator");
   const setPullStatus=(text,visible=true)=>{
     if(!pullIndicator)return;
@@ -574,6 +574,7 @@
   window.addEventListener("appresume",refreshWhenAppResumes);
   const resetPullGesture=()=>{
     pullTracking=false;pullReady=false;
+    if(pullHoldTimer){clearTimeout(pullHoldTimer);pullHoldTimer=null;}
   };
   document.addEventListener("touchstart",event=>{
     resetPullGesture();
@@ -593,23 +594,27 @@
     const distance=touch.clientY-pullStartY;
     const horizontal=Math.abs(touch.clientX-pullStartX);
     if(horizontal>70){resetPullGesture();return;}
-    if(distance>=110){
+    if(distance>=125){
       if(!pullReady){
         pullReady=true;
-        setPullStatus("اسحب للتحديث");
+        setPullStatus("ابقَ للحظة للتحديث");
+        pullHoldTimer=window.setTimeout(()=>{
+          if(!pullTracking||!pullReady||pullRefreshing)return;
+          resetPullGesture();
+          refreshAppData();
+        },1200);
       }
       if(event.cancelable)event.preventDefault();
     }else if(pullReady){
       pullReady=false;
+      if(pullHoldTimer){clearTimeout(pullHoldTimer);pullHoldTimer=null;}
       setPullStatus("",false);
     }
   },{passive:false,capture:true});
   document.addEventListener("touchend",()=>{
     if(!pullTracking)return;
-    const shouldRefresh=pullReady&&!pullRefreshing;
     resetPullGesture();
-    if(shouldRefresh)refreshAppData();
-    else setPullStatus("",false);
+    setPullStatus("",false);
   },{passive:true,capture:true});
   document.addEventListener("touchcancel",resetPullGesture,{passive:true,capture:true});
   $("copyBinanceDepositId").addEventListener("click", async () => {
