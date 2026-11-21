@@ -1412,8 +1412,8 @@
     if(openTradeQuoteRefreshBusy||!$("page-trading")?.classList.contains("active"))return;
     openTradeQuoteRefreshBusy=true;
     try{
-      const board=await api("/api/market/board",{headers:{}});
-      refreshOpenTradeCards(board.openTrades||[]);
+      const quotes=await api("/api/market/quotes",{headers:{}});
+      refreshOpenTradeCards(quotes.openTrades||[]);
     }catch(error){console.warn("Open trade quote refresh failed:",error);}
     finally{openTradeQuoteRefreshBusy=false;}
   };
