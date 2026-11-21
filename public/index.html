@@ -530,7 +530,7 @@
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
     } else $("adminPanel").classList.add("hidden");
   };
-  let pullStartY=0,pullTracking=false,pullReady=false,pullRefreshing=false;
+  let pullStartY=0,pullStartX=0,pullTracking=false,pullReady=false,pullRefreshing=false;
   const pullIndicator=$("pullRefreshIndicator");
   const setPullStatus=(text,visible=true)=>{
     if(!pullIndicator)return;
@@ -559,34 +559,37 @@
       window.setTimeout(()=>setPullStatus("",false),1800);
     }
   };
+  const resetPullGesture=()=>{pullTracking=false;pullReady=false;};
   document.addEventListener("touchstart",event=>{
-    if(event.touches.length!==1||pullRefreshing){pullTracking=false;pullReady=false;return;}
+    resetPullGesture();
+    if(event.touches.length!==1||pullRefreshing)return;
     const target=event.target;
-    if(target.closest("input,textarea,select,[contenteditable=true]")){pullTracking=false;pullReady=false;return;}
+    if(target.closest("button,a,input,textarea,select,summary,[role=button],[contenteditable=true]"))return;
     pullTracking=true;
-    pullReady=false;
     pullStartY=event.touches[0].clientY;
+    pullStartX=event.touches[0].clientX;
   },{passive:true,capture:true});
   document.addEventListener("touchmove",event=>{
     if(!pullTracking||pullRefreshing||event.touches.length!==1)return;
-    const distance=event.touches[0].clientY-pullStartY;
-    if(distance>100){
+    const touch=event.touches[0];
+    const distance=touch.clientY-pullStartY;
+    const horizontal=Math.abs(touch.clientX-pullStartX);
+    if(horizontal>70){resetPullGesture();return;}
+    if(distance>=130){
       pullReady=true;
       if(event.cancelable)event.preventDefault();
     }
   },{passive:false,capture:true});
   document.addEventListener("touchend",event=>{
     if(!pullTracking||pullRefreshing)return;
-    const distance=event.changedTouches[0].clientY-pullStartY;
-    const shouldRefresh=pullReady&&distance>100;
-    pullTracking=false;
-    pullReady=false;
+    const touch=event.changedTouches[0];
+    const distance=touch.clientY-pullStartY;
+    const horizontal=Math.abs(touch.clientX-pullStartX);
+    const shouldRefresh=pullReady&&distance>=130&&horizontal<70;
+    resetPullGesture();
     if(shouldRefresh)refreshAppData();
   },{passive:true,capture:true});
-  document.addEventListener("touchcancel",()=>{
-    pullTracking=false;
-    pullReady=false;
-  },{passive:true,capture:true});
+  document.addEventListener("touchcancel",resetPullGesture,{passive:true,capture:true});
   $("copyBinanceDepositId").addEventListener("click", async () => {
     const code=$("binanceDepositId").textContent.trim(),status=$("binanceCopyStatus");
     let copied=false;
