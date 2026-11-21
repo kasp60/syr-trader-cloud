@@ -334,7 +334,8 @@
             <h3>التحويل واستلام الأموال</h3>
             <div class="notice member-code-notice">رقم عضويتك داخل SYR TRADER: <strong id="walletMemberCode">—</strong> <button type="button" id="copyWalletMemberCode" class="copy-member-code" aria-label="نسخ رقم العضوية">نسخ الرقم</button>. استخدمه لاستلام التحويلات من الأعضاء الآخرين.<span id="memberCodeCopyStatus" class="member-code-copy-status" role="status" aria-live="polite"></span></div>
             <h3 style="margin-top:22px">إيداع عبر Binance</h3>
-            <p class="muted">حوّل إلى معرّف Binance التالي: <strong>1186514708</strong>، ثم أدخل مبلغ الإيداع بالدولار وأرفق صورة إثبات العملية. بعد تحقق المدير من وصول الحوالة وموافقته، يُضاف المبلغ إلى محفظة الدولار.</p>
+            <div class="notice member-code-notice">معرّف Binance للتحويل: <strong id="binanceDepositId">1186514708</strong> <button type="button" id="copyBinanceDepositId" class="copy-member-code">نسخ المعرّف</button><span id="binanceCopyStatus" class="member-code-copy-status" role="status" aria-live="polite"></span></div>
+            <p class="muted">حوّل إلى المعرّف أعلاه، ثم أدخل مبلغ الإيداع بالدولار وأرفق صورة إثبات العملية. بعد تحقق المدير من وصول الحوالة وموافقته، يُضاف المبلغ إلى محفظة الدولار.</p>
             <form id="depositForm">
               <label for="depositAmount">مبلغ الإيداع بالدولار</label><input id="depositAmount" type="number" min="0.01" step="0.01" required>
               <label for="depositProof">صورة إثبات التحويل (JPG / PNG / WEBP، حتى 850 كيلوبايت)</label><input id="depositProof" type="file" accept="image/jpeg,image/png,image/webp" required>
@@ -554,6 +555,17 @@
     pullTracking=false;
     if(distance>=85)refreshAppData();
   },{passive:true});
+  $("copyBinanceDepositId").addEventListener("click", async () => {
+    const code=$("binanceDepositId").textContent.trim(),status=$("binanceCopyStatus");
+    let copied=false;
+    try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(code);copied=true;}}catch(_){}
+    if(!copied){
+      const field=document.createElement("textarea");field.value=code;field.setAttribute("readonly","");field.style.position="fixed";field.style.opacity="0";document.body.appendChild(field);field.select();
+      try{copied=document.execCommand("copy");}catch(_){}
+      field.remove();
+    }
+    status.textContent=copied?"تم نسخ معرّف Binance.":"تعذر النسخ؛ حاول مرة أخرى.";
+  });
   $("copyWalletMemberCode").addEventListener("click", async () => {
     const code = $("walletMemberCode").textContent.trim();
     const status = $("memberCodeCopyStatus");
