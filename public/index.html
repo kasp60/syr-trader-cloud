@@ -642,8 +642,10 @@
           container.appendChild(row);
         });
       };
-      render("طلبات الإيداع",data.deposits||[],"deposit");
-      render("طلبات السحب",data.withdrawals||[],"withdrawal");
+      // Show only requests awaiting an admin decision. Reviewed requests remain
+      // stored in the database and wallet ledger, but disappear from this queue.
+      render("طلبات الإيداع",(data.deposits||[]).filter(item=>item.status==="pending"),"deposit");
+      render("طلبات السحب",(data.withdrawals||[]).filter(item=>item.status==="pending"),"withdrawal");
     }catch(error){container.textContent=error.message;}
   };
 
