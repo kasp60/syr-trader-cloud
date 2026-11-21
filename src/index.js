@@ -415,7 +415,6 @@ const runScheduledMarketBots = async (db, env) => {
 
     // During the scheduled pulse only, avoid pushing an existing position
     // through its liquidation quote; normal market risk rules remain unchanged.
-    let riskLowerBound=lowerBound,riskUpperBound=upperBound;
     if(dailyEventBps<0){
       let safeLower=lowerBound;
       for(const position of (positions.results||[])){
@@ -424,8 +423,7 @@ const runScheduledMarketBots = async (db, env) => {
         const threshold=((liquidation+1n)*10000n+9989n)/9990n;
         if(threshold>BigInt(safeLower))safeLower=Number(threshold);
       }
-      riskLowerBound=Math.min(upperBound,safeLower);
-      next=Math.max(next,riskLowerBound);
+      next=Math.max(next,Math.min(upperBound,safeLower));
     }else if(dailyEventBps>0){
       let safeUpper=upperBound;
       for(const position of (positions.results||[])){
@@ -434,8 +432,7 @@ const runScheduledMarketBots = async (db, env) => {
         const threshold=((liquidation-1n)*10000n)/10010n;
         if(threshold<BigInt(safeUpper))safeUpper=Number(threshold);
       }
-      riskUpperBound=Math.max(lowerBound,safeUpper);
-      next=Math.min(next,riskUpperBound);
+      next=Math.min(next,Math.max(lowerBound,safeUpper));
     }
     if(!Number.isSafeInteger(next)||next<=0||next===previous)continue;
     const now=new Date().toISOString();
