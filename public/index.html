@@ -547,7 +547,7 @@
       showAccount(data);
       const activePage=document.querySelector(".app-page.active")?.id;
       if(activePage==="page-wallet"){await loadLedger();await loadFinanceRequests();}
-      if(activePage==="page-trading"){await loadPaperMarket();await loadPaperHistory();await loadTradingChart();}
+      if(activePage==="page-trading"){await loadPaperMarket();await loadPaperHistory();}
       if(activePage==="page-admin"&&window.__syrIsAdmin){await loadAdminUsers();await loadAdminWallets();await loadAdminMarketInstruments();await loadAdminFinanceRequests();await loadPlatformReserve();}
       refreshed=true;
     }catch(error){
@@ -1083,14 +1083,30 @@
     const lastRsi=rsiValues.filter(v=>v!==null).at(-1),lastSma=sma20.filter(v=>v!==null).at(-1),lastMacd=macd.at(-1)-signal.at(-1);
     if(indicator){const values=[lastRsi===undefined?"غير كافٍ":lastRsi.toFixed(1),lastMacd.toFixed(4),lastSma===undefined?"غير كافٍ":fmt(lastSma),String(valid.length)];indicator.querySelectorAll("strong").forEach((node,i)=>node.textContent=values[i]??"—");}
   };
+  let tradingChartRefreshBusy=false;
   const loadTradingChart = async () => {
-    const id=$("chartInstrument")?.value;if(!id)return;
-    try{const [chart,board]=await Promise.all([api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),api("/api/market/board",{headers:{}})]);
-      drawMarketChart(chart.points||[],board.openTrades||[]);refreshOpenTradeCards(board.openTrades||[]);const item=board.market.find(x=>x.id===id);
-
+    const id=$("chartInstrument")?.value;if(!id||tradingChartRefreshBusy)return;
+    tradingChartRefreshBusy=true;
+    try{
+      const [chart,snapshot]=await Promise.all([
+        api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),
+        api("/api/market/quotes",{headers:{}})
+      ]);
+      const item=(snapshot.market||[]).find(x=>x.id===id);
+      const points=[...(chart.points||[])];
+      if(item?.priceMicro&&item?.updatedAt){
+        const latest=points[points.length-1];
+        if(!latest||Number(latest.priceMicro)!==Number(item.priceMicro)||Date.parse(latest.createdAt)<Date.parse(item.updatedAt)){
+          points.push({priceMicro:item.priceMicro,createdAt:item.updatedAt,source:"live"});
+        }
+      }
+      drawMarketChart(points,snapshot.openTrades||[]);
+      refreshOpenTradeCards(snapshot.openTrades||[]);
       if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
-      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;if($("chartBotStatus")){$("chartBotStatus").textContent=botEnabled?"السوق متاح":"يتم تحديث السوق";$("chartBotStatus").classList.toggle("running",botEnabled);}
+      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;
+      if($("chartBotStatus")){$("chartBotStatus").textContent=botEnabled?"السوق متاح":"يتم تحديث السوق";$("chartBotStatus").classList.toggle("running",botEnabled);}
     }catch(error){$("chartUpdated").textContent=error.message;}
+    finally{tradingChartRefreshBusy=false;}
   };
   document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet"){loadLedger();loadFinanceRequests();}if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();loadAdminFinanceRequests();loadPlatformReserve();}}));
   const updateAdminDailyEvent=()=>{
@@ -1197,6 +1213,7 @@
     try {
       const response = await fetch(path, {
         credentials: "same-origin",
+        cache: "no-store",
         ...requestOptions,
         signal: controller.signal,
         headers: { "content-type": "application/json", ...(options.headers || {}) }
@@ -1407,18 +1424,7 @@
       message($("accountMessage"), error.message, "error");
     }
   });
-  let openTradeQuoteRefreshBusy=false;
-  const refreshOpenTradeQuotes=async()=>{
-    if(openTradeQuoteRefreshBusy||!$("page-trading")?.classList.contains("active"))return;
-    openTradeQuoteRefreshBusy=true;
-    try{
-      const quotes=await api("/api/market/quotes",{headers:{}});
-      refreshOpenTradeCards(quotes.openTrades||[]);
-    }catch(error){console.warn("Open trade quote refresh failed:",error);}
-    finally{openTradeQuoteRefreshBusy=false;}
-  };
-  setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},15000);
-  setInterval(refreshOpenTradeQuotes,5000);
+  setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},5000);
   api("/api/health", { headers: {} })
     .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "متصل" : "الخادم متصل"; })
     .catch(() => { $("serverStatus").textContent = "غير متصل"; });
