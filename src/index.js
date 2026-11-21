@@ -772,7 +772,7 @@ const walletApi = async (request, env, url) => {
       return json({ok:false,error:"أدخل مبلغ الهامش بشكل صحيح وحدد رافعة من 1x إلى 20x"},400);
     const hasValidPrecision=direction==="long"?Number.isSafeInteger(marginAmount):Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
     if(!hasValidPrecision)return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
-    const [instrument]=await Promise.all([
+    const [instrument,referenceBounds]=await Promise.all([
       env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first(),
       getReserveReferenceBounds(env.DB)
     ]);
@@ -783,7 +783,7 @@ const walletApi = async (request, env, url) => {
     const quantityBig=direction==="long"?(marginMinor*lev*1000000000000n+entry/2n)/entry:marginMinor*lev*10000n;
     if(marginMinor<=0n||marginMinor>9007199254740991n||quantityBig<=0n||quantityBig>9007199254740991n)
       return json({ok:false,error:"قيمة الهامش أو حجم الصفقة خارج النطاق"},400);
-    const lock=tradeReserveLock(direction,quantityBig,entry,await getReserveReferenceBounds(env.DB));
+    const lock=tradeReserveLock(direction,quantityBig,entry,referenceBounds);
     if(lock<0n||lock>9007199254740991n)return json({ok:false,error:"تعذر حساب تغطية الصفقة"},409);
     await syncPlatformReserve(env.DB);
     const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
