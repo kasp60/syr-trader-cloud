@@ -1407,7 +1407,18 @@
       message($("accountMessage"), error.message, "error");
     }
   });
+  let openTradeQuoteRefreshBusy=false;
+  const refreshOpenTradeQuotes=async()=>{
+    if(openTradeQuoteRefreshBusy||!$("page-trading")?.classList.contains("active"))return;
+    openTradeQuoteRefreshBusy=true;
+    try{
+      const board=await api("/api/market/board",{headers:{}});
+      refreshOpenTradeCards(board.openTrades||[]);
+    }catch(error){console.warn("Open trade quote refresh failed:",error);}
+    finally{openTradeQuoteRefreshBusy=false;}
+  };
   setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},15000);
+  setInterval(refreshOpenTradeQuotes,5000);
   api("/api/health", { headers: {} })
     .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "متصل" : "الخادم متصل"; })
     .catch(() => { $("serverStatus").textContent = "غير متصل"; });
