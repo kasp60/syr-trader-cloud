@@ -772,11 +772,13 @@ const walletApi = async (request, env, url) => {
       return json({ok:false,error:"أدخل مبلغ الهامش بشكل صحيح وحدد رافعة من 1x إلى 20x"},400);
     const hasValidPrecision=direction==="long"?Number.isSafeInteger(marginAmount):Math.abs(marginAmount*100-Math.round(marginAmount*100))<=1e-8;
     if(!hasValidPrecision)return json({ok:false,error:direction==="long"?"هامش الشراء بالليرة يجب أن يكون عدداً صحيحاً":"هامش البيع بالدولار يقبل منزلتين عشريتين كحد أقصى"},400);
-    const [instrument,referenceBounds]=await Promise.all([
+    const [instrument,boundsResult]=await Promise.all([
       env.DB.prepare("SELECT i.id,p.price_micro AS priceMicro FROM market_instruments i JOIN market_prices p ON p.instrument_id=i.id WHERE i.id=? AND i.is_active=1 AND i.symbol='USD/SYP'").bind(instrumentId).first(),
-      getReserveReferenceBounds(env.DB)
+      getReserveReferenceBounds(env.DB).then(value=>({value})).catch(error=>({error}))
     ]);
     if(!instrument)return json({ok:false,error:"السعر غير متاح حالياً"},409);
+    if(!boundsResult.value)throw boundsResult.error;
+    const referenceBounds=boundsResult.value;
     const marginAssetSymbol=direction==="long"?"SYP":"USD";
     const marginMinor=BigInt(Math.round(marginAmount*(direction==="long"?1:100)));
     const entry=marketQuote(instrument.priceMicro,direction==="long"?"ask":"bid"),lev=BigInt(leverage);
