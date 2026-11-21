@@ -560,20 +560,34 @@ const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
   if (url.pathname === "/api/market/quotes" && request.method === "GET") {
-    const rows=await env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
-      t.entry_price_micro AS entryPriceMicro,t.margin_asset_symbol AS marginAssetSymbol,
-      p.price_micro AS midPriceMicro,p.updated_at AS priceUpdatedAt
-      FROM paper_trades t
-      JOIN market_prices p ON p.instrument_id=t.instrument_id
-      WHERE t.user_id=? AND t.status='open'
-      ORDER BY t.opened_at DESC LIMIT 100`).bind(user.id).all();
+    const [rows,marketRows]=await Promise.all([
+      env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
+        t.entry_price_micro AS entryPriceMicro,t.margin_asset_symbol AS marginAssetSymbol,
+        t.liquidation_price_micro AS liquidationPriceMicro,
+        p.price_micro AS midPriceMicro,p.updated_at AS priceUpdatedAt
+        FROM paper_trades t
+        JOIN market_prices p ON p.instrument_id=t.instrument_id
+        WHERE t.user_id=? AND t.status='open'
+        ORDER BY t.opened_at DESC LIMIT 100`).bind(user.id).all(),
+      env.DB.prepare(`SELECT i.id,i.symbol,p.price_micro AS priceMicro,p.updated_at AS updatedAt,
+        COALESCE(b.enabled,0) AS botEnabled
+        FROM market_instruments i
+        JOIN market_prices p ON p.instrument_id=i.id
+        LEFT JOIN market_bots b ON b.instrument_id=i.id
+        WHERE i.is_active=1 AND i.symbol='USD/SYP'`).all()
+    ]);
     const openTrades=(rows.results||[]).map(t=>({
       id:t.id,direction:t.direction,quantityMicro:t.quantityMicro,
-      entryPriceMicro:t.entryPriceMicro,marginAssetSymbol:t.marginAssetSymbol,
+      entryPriceMicro:t.entryPriceMicro,liquidationPriceMicro:t.liquidationPriceMicro,
+      marginAssetSymbol:t.marginAssetSymbol,
       currentPriceMicro:Number(marketQuote(t.midPriceMicro,t.direction==="long"?"bid":"ask")),
       priceUpdatedAt:t.priceUpdatedAt
     }));
-    return json({ok:true,openTrades});
+    const market=(marketRows.results||[]).map(item=>({
+      id:item.id,symbol:item.symbol,priceMicro:item.priceMicro,
+      updatedAt:item.updatedAt,botEnabled:Boolean(item.botEnabled)
+    }));
+    return json({ok:true,market,openTrades});
   }
 
   await ensureFinanceSchema(env.DB);
