@@ -434,13 +434,17 @@
           </form>
           <div id="marketAdminMessage" class="message" role="status" aria-live="polite"></div>
           </div>
-          <h3 style="margin-top:22px">سعر صرف الدولار مقابل الليرة</h3>
-          <label for="exchangeRateInput">كم ليرة تساوي دولاراً واحداً؟</label>
-          <input id="exchangeRateInput" type="number" min="0.000001" step="0.01" placeholder="أدخل السعر المعتمد">
-          <label for="rateTransitionMinutes">مدة الوصول التدريجي (بالدقائق)</label>
-          <input id="rateTransitionMinutes" type="number" min="1" max="1440" step="1" value="15" required>
-          <div class="form-actions"><button type="button" id="saveRateButton">اعتماد السعر تدريجياً</button></div>
-          <div class="message" id="rateMessage" role="status" aria-live="polite"></div><p class="muted">يتحرك سعر السوق والشارت تدريجياً نحو السعر المعتمد خلال المدة المحددة، ويستمر المحرك بالعمل على الخادم.</p>
+          <section class="subpanel" id="exchangeRateAdmin" style="margin-top:22px">
+            <h3>تحديد سعر الصرف من الإدارة</h3>
+            <p class="muted">أدخل السعر الذي تريد اعتماده: كم ليرة تساوي دولاراً واحداً؟</p>
+            <label for="exchangeRateInput">السعر الجديد</label>
+            <input id="exchangeRateInput" type="number" min="0.000001" step="0.01" placeholder="أدخل السعر المعتمد">
+            <label for="rateTransitionMinutes">مدة الوصول التدريجي (بالدقائق)</label>
+            <input id="rateTransitionMinutes" type="number" min="1" max="1440" step="1" value="15" required>
+            <div class="form-actions"><button class="primary" type="button" id="saveRateButton">تحديد السعر واعتماده</button></div>
+            <div class="message" id="rateMessage" role="status" aria-live="polite"></div>
+            <p class="muted">بعد الاعتماد يتحرك سعر السوق والشارت تدريجياً نحو السعر الذي حددته خلال المدة المختارة، ويستمر المحرك بالعمل على الخادم.</p>
+          </section>
           <div class="message" id="adminMessage" role="status" aria-live="polite"></div>
         </section>
         </section>
