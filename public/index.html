@@ -908,6 +908,7 @@
   };
 
   const renderOpenTradeCards = trades => {
+    latestOpenTrades=Array.isArray(trades)?trades:[];
     const openTrades=$("openTradesList");openTrades.replaceChildren();
     if(!trades?.length)openTrades.textContent="لا توجد صفقات مفتوحة حالياً.";
     else trades.forEach(t=>{
@@ -1278,11 +1279,15 @@
         }
         if($("chartUpdated"))$("chartUpdated").textContent="آخر تحديث: "+new Date(update.updatedAt).toLocaleString("ar");
       }
-      if($("page-trading")?.classList.contains("active")){
-        api("/api/market/quotes",{headers:{}}).then(snapshot=>{
-          refreshOpenTradeCards(snapshot.openTrades||[]);
-          if(selectedId===update.instrumentId)drawMarketChart(latestChartPoints,snapshot.openTrades||[]);
-        }).catch(()=>{});
+      const bidPriceMicro=Number(update.bidPriceMicro),askPriceMicro=Number(update.askPriceMicro);
+      if(Number.isSafeInteger(bidPriceMicro)&&bidPriceMicro>0&&Number.isSafeInteger(askPriceMicro)&&askPriceMicro>0){
+        let positionsChanged=false;
+        latestOpenTrades=latestOpenTrades.map(trade=>{
+          if(String(trade.instrumentId)!==String(update.instrumentId))return trade;
+          positionsChanged=true;
+          return {...trade,currentPriceMicro:trade.direction==="long"?bidPriceMicro:askPriceMicro,priceUpdatedAt:update.updatedAt};
+        });
+        if(positionsChanged)refreshOpenTradeCards(latestOpenTrades);
       }
     });
     socket.addEventListener("close",()=>{
