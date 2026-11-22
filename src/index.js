@@ -1,4 +1,5 @@
 import { marketQuote, tradeReserveLock } from "./reserve-risk.js";
+export { MarketStream } from "./market-stream.js";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -13,6 +14,24 @@ const json = (data, status = 200, headers = {}) =>
       ...headers
     }
   });
+
+const publishMarketPrice = async (env, update) => {
+  if (!env.MARKET_STREAM) return false;
+  try {
+    const id = env.MARKET_STREAM.idFromName("market");
+    const stub = env.MARKET_STREAM.get(id);
+    const response = await stub.fetch("https://market-stream.internal/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(update)
+    });
+    if (!response.ok) throw new Error(`stream publish failed: ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error("SYR_TRADER_MARKET_STREAM_PUBLISH_ERROR", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+};
 
 const PBKDF2_ITERATIONS = 100000;
 const SESSION_DAYS = 7;
@@ -444,6 +463,7 @@ const runScheduledMarketBots = async (db, env) => {
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0){
       changed++;
+      await publishMarketPrice(env,{instrumentId:bot.instrumentId,priceMicro:next,updatedAt:now});
       await notifyTelegramPriceChange(env,previous,next).catch(error=>console.error("SYR_TRADER_TELEGRAM_STATE_ERROR",error instanceof Error?error.message:String(error)));
     }
   }
@@ -559,6 +579,16 @@ const settleLiquidatedTrades = async (db) => {
 const walletApi = async (request, env, url) => {
   const user = await currentUser(request, env.DB);
   if (!user || user.status !== "active") return json({ ok: false, error: "غير مسجل الدخول" }, 401);
+  if (url.pathname === "/api/market/stream") {
+    if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      return json({ok:false,error:"WebSocket upgrade required"},426);
+    }
+    if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
+    if (!env.MARKET_STREAM) return json({ok:false,error:"خدمة الأسعار اللحظية غير متاحة"},503);
+    const id=env.MARKET_STREAM.idFromName("market");
+    return env.MARKET_STREAM.get(id).fetch(new Request("https://market-stream.internal/connect",request));
+  }
+
   if (url.pathname === "/api/market/quotes" && request.method === "GET") {
     const [rows,marketRows]=await Promise.all([
       env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
@@ -759,11 +789,13 @@ const walletApi = async (request, env, url) => {
     }
     const previousRow=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(instrumentId).first();
     const previousPriceMicro=Number(previousRow?.priceMicro||0);
+    const updatedAt=new Date().toISOString();
     await env.DB.prepare(`INSERT INTO market_prices (instrument_id,price_micro,updated_by,updated_at)
       VALUES (?,?,?,?) ON CONFLICT(instrument_id) DO UPDATE SET price_micro=excluded.price_micro,
       updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
-      .bind(instrumentId,priceMicro,user.id,new Date().toISOString()).run();
-    await env.DB.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) VALUES (?,?,?,'manual',?)").bind(crypto.randomUUID(),instrumentId,priceMicro,new Date().toISOString()).run();
+      .bind(instrumentId,priceMicro,user.id,updatedAt).run();
+    await env.DB.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) VALUES (?,?,?,'manual',?)").bind(crypto.randomUUID(),instrumentId,priceMicro,updatedAt).run();
+    await publishMarketPrice(env,{instrumentId,priceMicro,updatedAt});
     if(exists.symbol==="USD/SYP"&&previousPriceMicro>0)await notifyTelegramPriceChange(env,previousPriceMicro,priceMicro).catch(error=>console.error("SYR_TRADER_TELEGRAM_STATE_ERROR",error instanceof Error?error.message:String(error)));
     return json({ok:true,priceMicro});
   }
