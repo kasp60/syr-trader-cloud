@@ -4,7 +4,7 @@ export class MarketStream extends DurableObject {
   async fetch(request) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/connect") {
+    if (request.method === "GET" && request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
       if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
         return new Response("WebSocket upgrade required", { status: 426 });
       }
