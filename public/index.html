@@ -1206,7 +1206,7 @@
   $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{
     const direction=$("terminalSide").value==="buy"?"long":"short";
     const leverage=Number($("terminalLeverage").value),margin=Number($("terminalQuantity").value),instrumentId=$("chartInstrument").value;
-    let openedTradeId=null;
+    let openedTradeId=null,openedTradeData=null;
     if($("terminalOrderType").value==="limit"){
       const result=await api("/api/paper/limit-order",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage,limitPrice:Number($("terminalLimitPrice").value)})});
       $("terminalQuantity").value="";$("terminalLimitPrice").value="";
@@ -1214,16 +1214,17 @@
       else message($("terminalMessage"),"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
     }else{
       const result=await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      openedTradeData=result;
       openedTradeId=result.tradeId||null;
       $("terminalQuantity").value="";
     }
     if(openedTradeId){
       if($("terminalOrderType").value!=="limit"){
         const optimisticTrade={
-          id:openedTradeId,direction,quantityMicro:Math.round(Number(result.quantity)*1000000),
-          entryPriceMicro:Number(result.entryPriceMicro),currentPriceMicro:Number(result.entryPriceMicro),
-          liquidationPriceMicro:Number(result.liquidationPriceMicro),marginCents:Number(result.marginCents),
-          marginAssetSymbol:result.marginAssetSymbol,leverage:Number(result.leverage)
+          id:openedTradeId,direction,quantityMicro:Math.round(Number(openedTradeData.quantity)*1000000),
+          entryPriceMicro:Number(openedTradeData.entryPriceMicro),currentPriceMicro:Number(openedTradeData.entryPriceMicro),
+          liquidationPriceMicro:Number(openedTradeData.liquidationPriceMicro),marginCents:Number(openedTradeData.marginCents),
+          marginAssetSymbol:openedTradeData.marginAssetSymbol,leverage:Number(openedTradeData.leverage)
         };
         renderOpenTradeCards([optimisticTrade,...latestOpenTrades.filter(t=>String(t.id)!==String(openedTradeId))]);
         $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(openedTradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
