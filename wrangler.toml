@@ -15,5 +15,17 @@ database_name = "syr-trader-db"
 database_id = "ec45e583-df43-4ff4-9c94-07a7a56707c1"
 migrations_dir = "migrations"
 
+[[previews.d1_databases]]
+binding = "DB"
+database_id = "77dcf242-f171-4d88-81a8-863d9fae3366"
+
 [triggers]
 crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "MARKET_STREAM"
+class_name = "MarketStream"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MarketStream"]

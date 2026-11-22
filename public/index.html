@@ -304,6 +304,7 @@
           <h3>التداول بالليرة</h3>
           <p class="muted">تداول الدولار مقابل الليرة ضمن سوق المنصة، مع عرض الأسعار ومؤشرات السوق ومتابعة صفقاتك من مكان واحد.</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select></div>
+          <div class="notice" role="note">ملاحظة عن فرق السعر: الشارت يعرض السعر المتوسط، أما تنفيذ الشراء والبيع فيعتمد على سعر البيع والشراء (Bid / Ask). لذلك قد يظهر فرق بين السعرين، مثل 15 قرشاً أحياناً، بحسب فرق السعر (Spread) وقت التنفيذ. هذا الفرق طبيعي وليس خطأ في تحديث الشارت.</div>
           <div class="chart-controls" aria-label="إعدادات الشارت"><div class="chart-control-row chart-range-row" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة الزمنية:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button></div><div class="chart-control-row chart-count-row" aria-label="عدد الشموع"><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div></div><div class="chart-panel"><div class="chart-heading"><strong>مخطط الشموع اليابانية · USD / SYP</strong><span id="chartLastPrice" class="price-up">بانتظار السعر</span></div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div>
           <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
@@ -464,7 +465,7 @@
   </main>
   <footer>SYR TRADER
     <span aria-hidden="true"> · </span>
-    <a href="https://t.me/syriatrader_app" target="_blank" rel="noopener noreferrer" aria-label="الانضمام إلى قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
+    <a href="https://t.me/syriatrader_app" aria-label="فتح قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
   </footer>
 <script>
 (() => {
@@ -525,6 +526,7 @@
     loadPaperMarket();
     loadPaperHistory();
     loadTradingChart();
+    connectMarketStream();
     if (data.user.role === "admin") {
       $("adminPanel").classList.remove("hidden");
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
@@ -537,26 +539,28 @@
     pullIndicator.textContent=text;
     pullIndicator.classList.toggle("visible",visible);
   };
-  const refreshAppData=async()=>{
+  const refreshAppData=async({silent=false}={})=>{
     if(pullRefreshing)return;
     pullRefreshing=true;
-    setPullStatus("جاري تحديث البيانات...");
+    if(!silent)setPullStatus("جاري تحديث البيانات...");
     let refreshed=false;
     try{
       const data=await api("/api/auth/me",{headers:{}});
       showAccount(data);
       const activePage=document.querySelector(".app-page.active")?.id;
       if(activePage==="page-wallet"){await loadLedger();await loadFinanceRequests();}
-      if(activePage==="page-trading"){await loadPaperMarket();await loadPaperHistory();await loadTradingChart();}
+      if(activePage==="page-trading"){await loadPaperMarket();await loadPaperHistory();}
       if(activePage==="page-admin"&&window.__syrIsAdmin){await loadAdminUsers();await loadAdminWallets();await loadAdminMarketInstruments();await loadAdminFinanceRequests();await loadPlatformReserve();}
       refreshed=true;
     }catch(error){
       if(error?.status===401||/unauthorized|انتهت الجلسة/i.test(error?.message||"")){location.reload();return;}
-      setPullStatus("تعذّر تحديث البيانات، حاول مرة أخرى.");
+      if(!silent)setPullStatus("تعذّر تحديث البيانات، حاول مرة أخرى.");
     }finally{
       pullRefreshing=false;
-      if(refreshed)setPullStatus("تم تحديث البيانات");
-      window.setTimeout(()=>setPullStatus("",false),1800);
+      if(!silent){
+        if(refreshed)setPullStatus("تم تحديث البيانات");
+        window.setTimeout(()=>setPullStatus("",false),1800);
+      }
     }
   };
   let lastResumeRefreshAt=0;
@@ -565,17 +569,14 @@
     const now=Date.now();
     if(now-lastResumeRefreshAt<5000)return;
     lastResumeRefreshAt=now;
-    refreshAppData();
+    refreshAppData({silent:true});
   };
   document.addEventListener("visibilitychange",()=>{
     if(document.visibilityState==="visible")refreshWhenAppResumes();
   });
   window.addEventListener("pageshow",refreshWhenAppResumes);
   window.addEventListener("appresume",refreshWhenAppResumes);
-  const resetPullGesture=()=>{
-    pullTracking=false;pullReady=false;
-    if(pullHoldTimer){clearTimeout(pullHoldTimer);pullHoldTimer=null;}
-  };
+  const resetPullGesture=()=>{pullTracking=false;pullReady=false;};
   document.addEventListener("touchstart",event=>{
     resetPullGesture();
     if(event.touches.length!==1||pullRefreshing)return;
@@ -595,26 +596,23 @@
     const horizontal=Math.abs(touch.clientX-pullStartX);
     if(horizontal>70){resetPullGesture();return;}
     if(distance>=125){
-      if(!pullReady){
-        pullReady=true;
-        setPullStatus("ابقَ للحظة للتحديث");
-        pullHoldTimer=window.setTimeout(()=>{
-          if(!pullTracking||!pullReady||pullRefreshing)return;
-          resetPullGesture();
-          refreshAppData();
-        },1200);
-      }
+      pullReady=true;
+      setPullStatus("اسحب للأسفل ثم اترك للتحديث");
       if(event.cancelable)event.preventDefault();
     }else if(pullReady){
       pullReady=false;
-      if(pullHoldTimer){clearTimeout(pullHoldTimer);pullHoldTimer=null;}
       setPullStatus("",false);
     }
   },{passive:false,capture:true});
-  document.addEventListener("touchend",()=>{
-    if(!pullTracking)return;
+  document.addEventListener("touchend",event=>{
+    if(!pullTracking||pullRefreshing)return;
+    const touch=event.changedTouches[0];
+    const distance=touch.clientY-pullStartY;
+    const horizontal=Math.abs(touch.clientX-pullStartX);
+    const shouldRefresh=pullReady&&distance>=125&&horizontal<70;
     resetPullGesture();
     setPullStatus("",false);
+    if(shouldRefresh)refreshAppData();
   },{passive:true,capture:true});
   document.addEventListener("touchcancel",resetPullGesture,{passive:true,capture:true});
   $("copyBinanceDepositId").addEventListener("click", async () => {
@@ -889,6 +887,57 @@
     });
   };
 
+  const refreshOpenTradeCards = (trades) => {
+    (trades||[]).forEach(t=>{
+      const row=$("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(t.id))+'"]');
+      if(!row)return;
+      const current=Number(t.currentPriceMicro)/1000000;
+      if(!Number.isFinite(current)||current<=0)return;
+      const entry=Number(t.entryPriceMicro)/1000000,quantity=Number(t.quantityMicro)/1000000;
+      const pnl=t.direction==="long"?(current-entry)*quantity:(entry-current)/entry*quantity;
+      const currentNode=row.querySelector('[data-trade-value="current"]');
+      const pnlNode=row.querySelector('[data-trade-value="pnl"]');
+      if(currentNode)currentNode.textContent=current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
+      if(pnlNode){
+        const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+        pnlNode.textContent=(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset;
+        pnlNode.classList.toggle("profit-value",pnl>=0);
+        pnlNode.classList.toggle("loss-value",pnl<0);
+      }
+    });
+  };
+
+  const renderOpenTradeCards = trades => {
+    const openTrades=$("openTradesList");openTrades.replaceChildren();
+    if(!trades?.length)openTrades.textContent="لا توجد صفقات مفتوحة حالياً.";
+    else trades.forEach(t=>{
+          const row=document.createElement("article");row.className="trade-contract-card";row.dataset.tradeId=String(t.id);
+          const entry=Number(t.entryPriceMicro)/1000000,current=Number(t.currentPriceMicro)/1000000,liq=Number(t.liquidationPriceMicro)/1000000;
+          const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+          const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+          const margin=Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1);
+          const pnl=t.direction==="long"?(current-entry)*Number(t.quantityMicro)/1000000:(entry-current)/entry*(Number(t.quantityMicro)/1000000);
+          const heading=document.createElement("div");heading.className="contract-heading";
+          const title=document.createElement("strong");title.textContent=t.direction==="long"?"شراء · LONG":"بيع · SHORT";
+          const status=document.createElement("span");status.textContent="مفتوحة";status.className="contract-status";
+          heading.append(title,status);
+          const details=document.createElement("div");details.className="contract-details";
+          const addDetail=(label,value,extra="",key="")=>{const cell=document.createElement("div");const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value;if(extra)v.className=extra;if(key)v.dataset.tradeValue=key;cell.append(l,v);details.appendChild(cell);};
+          addDetail("سعر الدخول",entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
+          addDetail("السعر الحالي",current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","","current");
+          addDetail("سعر التصفية",liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","liquidation-value");
+          addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
+          addDetail("حجم العقد",qty);
+          addDetail("الرافعة المالية",Number(t.leverage)+"x");
+          addDetail("الربح / الخسارة التقديرية",(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset,pnl>=0?"profit-value":"loss-value","pnl");
+          const close=document.createElement("button");close.type="button";close.className="close-contract-button";close.textContent="إغلاق الصفقة";
+          close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/(result.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
+          row.append(heading,details,close);openTrades.appendChild(row);
+  
+    });
+    refreshOpenTradeCards(trades||[]);
+  };
+
   const loadPaperMarket = async () => {
     try {
       const data = await api("/api/market/board", { headers: {} });
@@ -912,33 +961,7 @@
       const terminalPositions=$("terminalPositions");terminalPositions.replaceChildren();
       if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
       else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
-      const openTrades=$("openTradesList");openTrades.replaceChildren();
-      if(!data.openTrades?.length)openTrades.textContent="لا توجد صفقات مفتوحة حالياً.";
-      else data.openTrades.forEach(t=>{
-        const row=document.createElement("article");row.className="trade-contract-card";
-        const entry=Number(t.entryPriceMicro)/1000000,current=Number(t.currentPriceMicro)/1000000,liq=Number(t.liquidationPriceMicro)/1000000;
-        const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
-        const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
-        const margin=Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1);
-        const pnl=t.direction==="long"?(current-entry)*Number(t.quantityMicro)/1000000:(entry-current)/entry*(Number(t.quantityMicro)/1000000);
-        const heading=document.createElement("div");heading.className="contract-heading";
-        const title=document.createElement("strong");title.textContent=t.direction==="long"?"شراء · LONG":"بيع · SHORT";
-        const status=document.createElement("span");status.textContent="مفتوحة";status.className="contract-status";
-        heading.append(title,status);
-        const details=document.createElement("div");details.className="contract-details";
-        const addDetail=(label,value,extra="")=>{const cell=document.createElement("div");const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value; if(extra)v.className=extra;cell.append(l,v);details.appendChild(cell);};
-        addDetail("سعر الدخول",entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
-        addDetail("السعر الحالي",current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
-        addDetail("سعر التصفية",liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","liquidation-value");
-        addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
-        addDetail("حجم العقد",qty);
-        addDetail("الرافعة المالية",Number(t.leverage)+"x");
-        addDetail("الربح / الخسارة التقديرية",(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset,pnl>=0?"profit-value":"loss-value");
-        const close=document.createElement("button");close.type="button";close.className="close-contract-button";close.textContent="إغلاق الصفقة";
-        close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/(result.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
-        row.append(heading,details,close);openTrades.appendChild(row);
-      });
-
+      renderOpenTradeCards(data.openTrades||[]);
       const pendingList=$("pendingLimitOrdersList");pendingList.replaceChildren();
       if(!data.limitOrders?.length)pendingList.textContent="لا توجد أوامر معلّقة حالياً.";
       else data.limitOrders.forEach(o=>{
@@ -980,7 +1003,21 @@
         const total=(Number(o.totalCents)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة";
         addTextRow(orders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol+" · "+qty,total);
       });
-    } catch(error) { $("paperMarketList").textContent=error.message; }
+      return data;
+    } catch(error) { $("paperMarketList").textContent=error.message; return null; }
+  };
+  const refreshOpenedTradeUntilVisible = async tradeId => {
+    if(!tradeId)return false;
+    for(let attempt=0;attempt<5;attempt++){
+      const data=await api("/api/market/board",{headers:{}});
+      if(data?.openTrades?.some(trade=>String(trade.id)===String(tradeId))){
+        renderOpenTradeCards(data.openTrades||[]);
+        $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(tradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
+        return true;
+      }
+      if(attempt<4)await new Promise(resolve=>window.setTimeout(resolve,300));
+    }
+    return false;
   };
   let chartRangeMs=60000,chartVisibleCount=60,latestChartPoints=[],latestOpenTrades=[];
   const drawMarketChart = (points,trades=latestOpenTrades) => {
@@ -1068,14 +1105,30 @@
     const lastRsi=rsiValues.filter(v=>v!==null).at(-1),lastSma=sma20.filter(v=>v!==null).at(-1),lastMacd=macd.at(-1)-signal.at(-1);
     if(indicator){const values=[lastRsi===undefined?"غير كافٍ":lastRsi.toFixed(1),lastMacd.toFixed(4),lastSma===undefined?"غير كافٍ":fmt(lastSma),String(valid.length)];indicator.querySelectorAll("strong").forEach((node,i)=>node.textContent=values[i]??"—");}
   };
+  let tradingChartRefreshBusy=false;
   const loadTradingChart = async () => {
-    const id=$("chartInstrument")?.value;if(!id)return;
-    try{const [chart,board]=await Promise.all([api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),api("/api/market/board",{headers:{}})]);
-      drawMarketChart(chart.points||[],board.openTrades||[]);const item=board.market.find(x=>x.id===id);
-
+    const id=$("chartInstrument")?.value;if(!id||tradingChartRefreshBusy)return;
+    tradingChartRefreshBusy=true;
+    try{
+      const [chart,snapshot]=await Promise.all([
+        api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),
+        api("/api/market/quotes",{headers:{}})
+      ]);
+      const item=(snapshot.market||[]).find(x=>x.id===id);
+      const points=[...(chart.points||[])];
+      if(item?.priceMicro&&item?.updatedAt){
+        const latest=points[points.length-1];
+        if(!latest||Number(latest.priceMicro)!==Number(item.priceMicro)||Date.parse(latest.createdAt)<Date.parse(item.updatedAt)){
+          points.push({priceMicro:item.priceMicro,createdAt:item.updatedAt,source:"live"});
+        }
+      }
+      drawMarketChart(points,snapshot.openTrades||[]);
+      refreshOpenTradeCards(snapshot.openTrades||[]);
       if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
-      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;if($("chartBotStatus")){$("chartBotStatus").textContent=botEnabled?"السوق متاح":"يتم تحديث السوق";$("chartBotStatus").classList.toggle("running",botEnabled);}
+      const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;
+      if($("chartBotStatus")){$("chartBotStatus").textContent=botEnabled?"السوق متاح":"يتم تحديث السوق";$("chartBotStatus").classList.toggle("running",botEnabled);}
     }catch(error){$("chartUpdated").textContent=error.message;}
+    finally{tradingChartRefreshBusy=false;}
   };
   document.querySelectorAll("[data-app-page]").forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.appPage;document.querySelectorAll(".app-page").forEach(section=>section.classList.toggle("active",section.id==="page-"+page));document.querySelectorAll("[data-app-page]").forEach(item=>{if(item===button)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});if(page==="trading"){loadPaperMarket();loadPaperHistory();loadTradingChart();}if(page==="wallet"){loadLedger();loadFinanceRequests();}if(page==="admin"&&window.__syrIsAdmin){loadAdminUsers();loadAdminWallets();loadAdminMarketInstruments();loadAdminFinanceRequests();loadPlatformReserve();}}));
   const updateAdminDailyEvent=()=>{
@@ -1155,25 +1208,93 @@
   $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{
     const direction=$("terminalSide").value==="buy"?"long":"short";
     const leverage=Number($("terminalLeverage").value),margin=Number($("terminalQuantity").value),instrumentId=$("chartInstrument").value;
+    let openedTradeId=null,openedTradeData=null;
     if($("terminalOrderType").value==="limit"){
       const result=await api("/api/paper/limit-order",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage,limitPrice:Number($("terminalLimitPrice").value)})});
       $("terminalQuantity").value="";$("terminalLimitPrice").value="";
-      message($("terminalMessage"),result.status==="filled"?"وصل السعر المحدد وتم فتح الصفقة تلقائياً.":"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
+      if(result.status==="filled")openedTradeId=result.tradeId||null;
+      else message($("terminalMessage"),"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
     }else{
-      await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      const result=await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      openedTradeData=result;
+      openedTradeId=result.tradeId||null;
       $("terminalQuantity").value="";
-      message($("terminalMessage"),"تم حجز الهامش كاملاً وفتح الصفقة فوراً بحجم مضاعف "+leverage+"x.","success");
     }
-    await loadPaperMarket();
+    if(openedTradeId){
+      if($("terminalOrderType").value!=="limit"){
+        const optimisticTrade={
+          id:openedTradeId,direction,quantityMicro:Math.round(Number(openedTradeData.quantity)*1000000),
+          entryPriceMicro:Number(openedTradeData.entryPriceMicro),currentPriceMicro:Number(openedTradeData.entryPriceMicro),
+          liquidationPriceMicro:Number(openedTradeData.liquidationPriceMicro),marginCents:Number(openedTradeData.marginCents),
+          marginAssetSymbol:openedTradeData.marginAssetSymbol,leverage:Number(openedTradeData.leverage)
+        };
+        renderOpenTradeCards([optimisticTrade,...latestOpenTrades.filter(t=>String(t.id)!==String(openedTradeId))]);
+        $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(openedTradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
+        message($("terminalMessage"),"تم فتح العقد وظهر فوراً. جارٍ مزامنة بياناته.", "success");
+        refreshOpenedTradeUntilVisible(openedTradeId).then(visible=>{
+          if(!visible)console.warn("Opened trade is visible locally; server list sync is delayed",openedTradeId);
+        }).catch(error=>console.warn("Opened trade background sync failed",error));
+      }else{
+        const visible=await refreshOpenedTradeUntilVisible(openedTradeId);
+        if(visible)message($("terminalMessage"),"تم فتح العقد وظهر مباشرةً ضمن عقودك المفتوحة.", "success");
+        else message($("terminalMessage"),"تم فتح العقد وحجز الهامش، لكن تعذر تحديث قائمة العقود الآن. لا تعِد فتح العقد.", "error");
+      }
+    }else await loadPaperMarket();
   }catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
+    window.__syrCurrentUserId=null;
+    disconnectMarketStream();
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
     $("introText").textContent = "سجّل دخولك للوصول إلى محفظتك ومتابعة الأسعار لحظة بلحظة.";
     window.__syrIsAdmin = false;
     const adminNav = document.querySelector('[data-app-page="admin"]');
     if (adminNav) adminNav.hidden = true;
+  };
+  let marketSocket=null,marketSocketRetryTimer=null,marketSocketRetryDelay=1000;
+  const disconnectMarketStream = () => {
+    if(marketSocketRetryTimer){window.clearTimeout(marketSocketRetryTimer);marketSocketRetryTimer=null;}
+    const socket=marketSocket;marketSocket=null;
+    if(socket){socket.onclose=null;try{socket.close(1000,"session ended");}catch{}}
+  };
+  const connectMarketStream = () => {
+    if(!window.__syrCurrentUserId||document.visibilityState!=="visible")return;
+    if(marketSocket&&(marketSocket.readyState===WebSocket.OPEN||marketSocket.readyState===WebSocket.CONNECTING))return;
+    const protocol=location.protocol==="https:"?"wss:":"ws:";
+    const socket=new WebSocket(protocol+"//"+location.host+"/api/market/stream");
+    marketSocket=socket;
+    socket.addEventListener("open",()=>{if(marketSocket===socket){marketSocketRetryDelay=1000;if($("page-trading")?.classList.contains("active"))loadTradingChart();}});
+    socket.addEventListener("message",event=>{
+      let update;try{update=JSON.parse(event.data);}catch{return;}
+      if(update?.type!=="market_price"||!Number.isSafeInteger(Number(update.priceMicro))||Number(update.priceMicro)<=0)return;
+      const selectedId=$("chartInstrument")?.value;
+      if(selectedId===update.instrumentId&&$("page-trading")?.classList.contains("active")){
+        const points=[...latestChartPoints];
+        const last=points[points.length-1];
+        if(!last||Number(last.priceMicro)!==Number(update.priceMicro)||Date.parse(last.createdAt)<Date.parse(update.updatedAt)){
+          points.push({priceMicro:Number(update.priceMicro),createdAt:update.updatedAt,source:"live"});
+          drawMarketChart(points.slice(-1440),latestOpenTrades);
+        }
+        if($("chartUpdated"))$("chartUpdated").textContent="آخر تحديث: "+new Date(update.updatedAt).toLocaleString("ar");
+      }
+      if($("page-trading")?.classList.contains("active")){
+        api("/api/market/quotes",{headers:{}}).then(snapshot=>{
+          refreshOpenTradeCards(snapshot.openTrades||[]);
+          if(selectedId===update.instrumentId)drawMarketChart(latestChartPoints,snapshot.openTrades||[]);
+        }).catch(()=>{});
+      }
+    });
+    socket.addEventListener("close",()=>{
+      const wasCurrent=marketSocket===socket;
+      if(wasCurrent)marketSocket=null;
+      if(wasCurrent&&window.__syrCurrentUserId&&document.visibilityState==="visible"){
+        const delay=marketSocketRetryDelay;
+        marketSocketRetryDelay=Math.min(30000,marketSocketRetryDelay*2);
+        marketSocketRetryTimer=window.setTimeout(connectMarketStream,delay);
+      }
+    });
+    socket.addEventListener("error",()=>socket.close());
   };
   const api = async (path, options = {}) => {
     const { timeoutMs = 15000, ...requestOptions } = options;
@@ -1182,6 +1303,7 @@
     try {
       const response = await fetch(path, {
         credentials: "same-origin",
+        cache: "no-store",
         ...requestOptions,
         signal: controller.signal,
         headers: { "content-type": "application/json", ...(options.headers || {}) }
@@ -1392,7 +1514,13 @@
       message($("accountMessage"), error.message, "error");
     }
   });
-  setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},15000);
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible"){connectMarketStream();if($("page-trading")?.classList.contains("active"))loadTradingChart();}
+    else disconnectMarketStream();
+  });
+  setInterval(()=>{
+    if(document.visibilityState==="visible"&&$("page-trading")?.classList.contains("active")&&(!marketSocket||marketSocket.readyState!==WebSocket.OPEN))loadTradingChart();
+  },5000);
   api("/api/health", { headers: {} })
     .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "متصل" : "الخادم متصل"; })
     .catch(() => { $("serverStatus").textContent = "غير متصل"; });
