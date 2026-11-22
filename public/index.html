@@ -1440,15 +1440,20 @@
   });
   $("saveRateButton").addEventListener("click", async () => {
     const button = $("saveRateButton");
+    const rateInput = $("exchangeRateInput");
+    const originalRate = Number(rateInput.dataset.originalRate);
+    const rateValue = Number.isFinite(originalRate) && rateInput.value === originalRate.toFixed(2)
+      ? originalRate
+      : Number(rateInput.value);
     button.disabled = true;
     message($("rateMessage"), "جارٍ حفظ سعر الصرف...");
     try {
       const data = await api("/api/admin/exchange-rate", {
         method: "POST",
-        body: JSON.stringify({ rate: Number($("exchangeRateInput").value) === Number($("exchangeRateInput").value) && $("exchangeRateInput").value === Number($("exchangeRateInput").dataset.originalRate).toFixed(2) ? Number($("exchangeRateInput").dataset.originalRate) : Number($("exchangeRateInput").value), transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
+        body: JSON.stringify({ rate: rateValue, transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
       });
-      $("exchangeRateInput").dataset.originalRate = String(Number($("exchangeRateInput").value));
-      $("exchangeRateInput").value = Number($("exchangeRateInput").value).toFixed(2);
+      rateInput.dataset.originalRate = String(rateValue);
+      rateInput.value = rateValue.toFixed(2);
       message($("rateMessage"), "تم اعتماد السعر الجديد، وسيصل إليه السوق تدريجياً خلال " + data.transitionMinutes + " دقيقة.", "success");
       await loadPaperMarket();
       await loadTradingChart();
