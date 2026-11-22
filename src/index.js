@@ -431,8 +431,7 @@ const runScheduledMarketBots = async (db, env) => {
     const batch=await db.batch([
       db.prepare("UPDATE market_prices SET price_micro=?,updated_at=? WHERE instrument_id=? AND price_micro=? AND EXISTS (SELECT 1 FROM market_bots WHERE instrument_id=? AND enabled=1)").bind(next,now,bot.instrumentId,previous,bot.instrumentId),
       db.prepare("INSERT INTO market_price_history (id,instrument_id,price_micro,source,created_at) SELECT ?,?,?,'bot',? WHERE changes()=1").bind(crypto.randomUUID(),bot.instrumentId,next,now),
-      db.prepare("UPDATE market_bots SET last_tick_at=? WHERE instrument_id=? AND enabled=1").bind(now,bot.instrumentId),
-      db.prepare("UPDATE exchange_rates SET rate=?,updated_at=? WHERE base_symbol='USD' AND quote_symbol='SYP' AND EXISTS(SELECT 1 FROM market_prices WHERE instrument_id=? AND price_micro=?)").bind(next/1000000,now,bot.instrumentId,next)
+      db.prepare("UPDATE market_bots SET last_tick_at=? WHERE instrument_id=? AND enabled=1").bind(now,bot.instrumentId)
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0){
       changed++;
@@ -1002,7 +1001,7 @@ const walletApi = async (request, env, url) => {
 
   if (url.pathname === "/api/market/rate" && request.method === "GET") {
     const rate = await env.DB.prepare(
-      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
+      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, COALESCE((SELECT target_price_micro/1000000.0 FROM market_price_targets WHERE instrument_id='syr-usd-syp'),rate) AS rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
     ).first();
     return json({ ok: true, rate: rate || null });
   }
@@ -1033,7 +1032,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("UPDATE platform_reserve_balances SET required_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,reserved_minor=CASE asset_symbol WHEN 'SYP' THEN ? ELSE ? END,updated_at=? WHERE asset_symbol IN ('SYP','USD') AND (SELECT COUNT(*) FROM platform_reserve_balances WHERE deficit_minor=0 AND ((asset_symbol='SYP' AND balance_minor>=?) OR (asset_symbol='USD' AND balance_minor>=?)))=2").bind(requiredSyp,requiredUsd,requiredSyp,requiredUsd,now,requiredSyp,requiredUsd),
       env.DB.prepare("INSERT INTO market_price_targets(instrument_id,target_price_micro,from_price_micro,transition_started_at,transition_seconds,updated_by,updated_at) SELECT 'syr-usd-syp',?,?,?,?,?,? WHERE changes()=2 ON CONFLICT(instrument_id) DO UPDATE SET target_price_micro=excluded.target_price_micro,from_price_micro=excluded.from_price_micro,transition_started_at=excluded.transition_started_at,transition_seconds=excluded.transition_seconds,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(priceMicro,fromPriceMicro,now,transitionMinutes*60,user.id,now),
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) SELECT 'syr-usd-syp',1,80,0,?,? WHERE changes()=1 ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
-      env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) SELECT 'usd-syp','USD','SYP',?,?,? WHERE changes()=1 ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
+      env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) SELECT 'usd-syp','USD','SYP',?,?,? WHERE changes()=1 ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(rate,user.id,now)
     ]);
     if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±0.5 ليرة. موّل الاحتياطي أولاً."},409);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
@@ -1571,7 +1570,7 @@ const authApi = async (request, env, url) => {
        WHERE w.user_id = ? AND a.symbol IN ('SYP','USD') ORDER BY CASE a.symbol WHEN 'SYP' THEN 1 ELSE 2 END`
     ).bind(user.id).all();
     const rates = await env.DB.prepare(
-      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
+      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, COALESCE((SELECT target_price_micro/1000000.0 FROM market_price_targets WHERE instrument_id='syr-usd-syp'),rate) AS rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
     ).first();
     const member=await env.DB.prepare("SELECT code FROM member_codes WHERE user_id=?").bind(user.id).first();
     return json({
