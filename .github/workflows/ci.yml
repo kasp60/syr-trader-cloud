@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22
       - name: Check Worker syntax
-        run: node --check src/index.js && node --check src/market-stream.js
+        run: node --check src/index.js && node --check src/market-stream.js && node --check src/market-motion.js
       - name: Run reserve risk unit tests
         run: npm test
       - name: Check browser script syntax
