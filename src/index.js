@@ -348,7 +348,7 @@ const notifyTelegramPriceChange = async (env, previousPriceMicro, currentPriceMi
   }
 };
 
-const MARKET_MAX_DEVIATION_MICRO = 25_000_000; // Fixed maximum deviation: +/-25 SYP around the admin reference.
+const MARKET_MAX_DEVIATION_MICRO = 500_000; // Fixed maximum deviation: +/-0.5 SYP around the admin reference.
 const MARKET_IMBALANCE_PRESSURE_BPS = 25; // Maximum directional pressure per scheduled tick at a fully one-sided book.
 
 const runScheduledMarketBots = async (db, env) => {
