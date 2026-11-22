@@ -948,7 +948,7 @@
       const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument"), chartSelect=$("chartInstrument");
       market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren(); chartSelect.replaceChildren();
       data.market.forEach(item => {
-        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة" : "السعر غير محدد";
+        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة" : "السعر غير محدد";
         const updated = item.updatedAt ? "آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar") : "لم يحدد المدير سعراً بعد";
         addTextRow(market,item.symbol+" · "+item.name,price+" · "+updated+" · سعر يدوي وليس مباشراً");
         const opt=document.createElement("option"); opt.value=item.id; opt.textContent=item.symbol+" · "+item.name;
@@ -1445,8 +1445,10 @@
     try {
       const data = await api("/api/admin/exchange-rate", {
         method: "POST",
-        body: JSON.stringify({ rate: Number($("exchangeRateInput").value), transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
+        body: JSON.stringify({ rate: Number($("exchangeRateInput").value) === Number($("exchangeRateInput").value) && $("exchangeRateInput").value === Number($("exchangeRateInput").dataset.originalRate).toFixed(2) ? Number($("exchangeRateInput").dataset.originalRate) : Number($("exchangeRateInput").value), transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
       });
+      $("exchangeRateInput").dataset.originalRate = String(Number($("exchangeRateInput").value));
+      $("exchangeRateInput").value = Number($("exchangeRateInput").value).toFixed(2);
       message($("rateMessage"), "تم اعتماد السعر الجديد، وسيصل إليه السوق تدريجياً خلال " + data.transitionMinutes + " دقيقة.", "success");
       await loadPaperMarket();
       await loadTradingChart();
