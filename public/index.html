@@ -304,6 +304,7 @@
           <h3>التداول بالليرة</h3>
           <p class="muted">تداول الدولار مقابل الليرة ضمن سوق المنصة، مع عرض الأسعار ومؤشرات السوق ومتابعة صفقاتك من مكان واحد.</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select></div>
+          <div class="notice" role="note">ملاحظة عن فرق السعر: الشارت يعرض السعر المتوسط، أما تنفيذ الشراء والبيع فيعتمد على سعر البيع والشراء (Bid / Ask). لذلك قد يظهر فرق بين السعرين، مثل 15 قرشاً أحياناً، بحسب فرق السعر (Spread) وقت التنفيذ. هذا الفرق طبيعي وليس خطأ في تحديث الشارت.</div>
           <div class="chart-controls" aria-label="إعدادات الشارت"><div class="chart-control-row chart-range-row" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة الزمنية:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button></div><div class="chart-control-row chart-count-row" aria-label="عدد الشموع"><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div></div><div class="chart-panel"><div class="chart-heading"><strong>مخطط الشموع اليابانية · USD / SYP</strong><span id="chartLastPrice" class="price-up">بانتظار السعر</span></div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div>
           <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
@@ -464,7 +465,7 @@
   </main>
   <footer>SYR TRADER
     <span aria-hidden="true"> · </span>
-    <a href="https://t.me/syriatrader_app" target="_blank" rel="noopener noreferrer" aria-label="الانضمام إلى قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
+    <a href="https://t.me/syriatrader_app" aria-label="فتح قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
   </footer>
 <script>
 (() => {
