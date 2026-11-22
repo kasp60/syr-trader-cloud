@@ -1,4 +1,5 @@
 const MAX_DEVIATION_MICRO = 500_000;
+const CENT_MICRO = 10_000;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -28,18 +29,23 @@ export const nextMarketPrice = ({
     throw new RangeError("invalid market movement inputs");
   }
 
-  // Admin reference is the hard floor; the bot may only move upward by 0.5 SYP.
-  const lower = anchor;
-  const upper = anchor + MAX_DEVIATION_MICRO;
-  const boundedCurrent = clamp(current, lower, upper);
+  // Market mid-prices are stored in micro-SYP, but bot prices must land
+  // exactly on a piastre (0.01 SYP). Match the admin value as displayed.
+  const lower = Math.round(anchor / CENT_MICRO) * CENT_MICRO;
+  const upper = lower + MAX_DEVIATION_MICRO;
+  const boundedCurrent = clamp(
+    Math.round(current / CENT_MICRO) * CENT_MICRO,
+    lower,
+    upper
+  );
 
-  // With the default volatility, choose a fresh, variable step of about 0.10-0.40 SYP.
-  const maxStep = clamp(Math.round(volatility * 5_000), 50_000, 450_000);
-  const minStep = Math.min(30_000, Math.max(5_000, Math.floor(maxStep / 4)));
-  const magnitude = minStep + Math.floor(magnitudeRoll * (maxStep - minStep + 1));
+  // Pick a variable step in whole piastres; never create sub-piastre prices.
+  const maxStep = Math.floor(clamp(Math.round(volatility * 5_000), CENT_MICRO, 450_000) / CENT_MICRO) * CENT_MICRO;
+  const minStep = Math.min(30_000, Math.max(CENT_MICRO, Math.floor(maxStep / 4 / CENT_MICRO) * CENT_MICRO));
+  const stepCount = Math.max(1, Math.floor((maxStep - minStep) / CENT_MICRO) + 1);
+  const magnitude = minStep + Math.floor(magnitudeRoll * stepCount) * CENT_MICRO;
 
   // Direction remains random, with a soft bias toward the middle of the band.
-  // Configured drift and order-book pressure influence odds, never the hard floor.
   const midpoint = lower + MAX_DEVIATION_MICRO / 2;
   const positionBias = clamp((midpoint - boundedCurrent) / (MAX_DEVIATION_MICRO / 2), -1, 1) * 0.25;
   const configuredBias = clamp((drift + pressure) / 10_000, -0.15, 0.15);
@@ -47,7 +53,6 @@ export const nextMarketPrice = ({
   let direction = directionRoll < probabilityUp ? 1 : -1;
 
   let available = direction > 0 ? upper - boundedCurrent : boundedCurrent - lower;
-  // At either edge, reverse direction so every next price remains in the band.
   if (available <= 0) {
     direction *= -1;
     available = direction > 0 ? upper - boundedCurrent : boundedCurrent - lower;
