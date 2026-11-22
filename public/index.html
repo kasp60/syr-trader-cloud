@@ -997,7 +997,20 @@
         const total=(Number(o.totalCents)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة";
         addTextRow(orders,(o.side==="buy"?"شراء":"بيع")+" · "+o.symbol+" · "+qty,total);
       });
-    } catch(error) { $("paperMarketList").textContent=error.message; }
+      return data;
+    } catch(error) { $("paperMarketList").textContent=error.message; return null; }
+  };
+  const refreshOpenedTradeUntilVisible = async tradeId => {
+    if(!tradeId)return false;
+    for(let attempt=0;attempt<5;attempt++){
+      const data=await loadPaperMarket();
+      if(data?.openTrades?.some(trade=>String(trade.id)===String(tradeId))){
+        $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(tradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
+        return true;
+      }
+      if(attempt<4)await new Promise(resolve=>window.setTimeout(resolve,300));
+    }
+    return false;
   };
   let chartRangeMs=60000,chartVisibleCount=60,latestChartPoints=[],latestOpenTrades=[];
   const drawMarketChart = (points,trades=latestOpenTrades) => {
@@ -1188,16 +1201,22 @@
   $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{
     const direction=$("terminalSide").value==="buy"?"long":"short";
     const leverage=Number($("terminalLeverage").value),margin=Number($("terminalQuantity").value),instrumentId=$("chartInstrument").value;
+    let openedTradeId=null;
     if($("terminalOrderType").value==="limit"){
       const result=await api("/api/paper/limit-order",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage,limitPrice:Number($("terminalLimitPrice").value)})});
       $("terminalQuantity").value="";$("terminalLimitPrice").value="";
-      message($("terminalMessage"),result.status==="filled"?"وصل السعر المحدد وتم فتح الصفقة تلقائياً.":"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
+      if(result.status==="filled")openedTradeId=result.tradeId||null;
+      else message($("terminalMessage"),"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
     }else{
-      await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      const result=await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      openedTradeId=result.tradeId||null;
       $("terminalQuantity").value="";
-      message($("terminalMessage"),"تم حجز الهامش كاملاً وفتح الصفقة فوراً بحجم مضاعف "+leverage+"x.","success");
     }
-    await loadPaperMarket();
+    if(openedTradeId){
+      const visible=await refreshOpenedTradeUntilVisible(openedTradeId);
+      if(visible)message($("terminalMessage"),"تم فتح العقد وظهر مباشرةً ضمن عقودك المفتوحة.", "success");
+      else message($("terminalMessage"),"تم فتح العقد وحجز الهامش، لكن تعذر تحديث قائمة العقود الآن. أعد المحاولة بعد لحظات دون إعادة فتح العقد.", "error");
+    }else await loadPaperMarket();
   }catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
