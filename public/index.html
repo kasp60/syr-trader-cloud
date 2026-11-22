@@ -1105,12 +1105,14 @@
     if(indicator){const values=[lastRsi===undefined?"غير كافٍ":lastRsi.toFixed(1),lastMacd.toFixed(4),lastSma===undefined?"غير كافٍ":fmt(lastSma),String(valid.length)];indicator.querySelectorAll("strong").forEach((node,i)=>node.textContent=values[i]??"—");}
   };
   let tradingChartRefreshBusy=false;
+  const chartHistoryCache=new Map();
   const loadTradingChart = async () => {
     const id=$("chartInstrument")?.value;if(!id||tradingChartRefreshBusy)return;
     tradingChartRefreshBusy=true;
     try{
+      const cachedPoints=chartHistoryCache.get(id);
       const [chart,snapshot]=await Promise.all([
-        api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),
+        cachedPoints?Promise.resolve({points:cachedPoints}):api("/api/market/chart?instrumentId="+encodeURIComponent(id),{headers:{}}),
         api("/api/market/quotes",{headers:{}})
       ]);
       const item=(snapshot.market||[]).find(x=>x.id===id);
@@ -1121,7 +1123,9 @@
           points.push({priceMicro:item.priceMicro,createdAt:item.updatedAt,source:"live"});
         }
       }
-      drawMarketChart(points,snapshot.openTrades||[]);
+      const recentPoints=points.slice(-1440);
+      chartHistoryCache.set(id,recentPoints);
+      drawMarketChart(recentPoints,snapshot.openTrades||[]);
       refreshOpenTradeCards(snapshot.openTrades||[]);
       if(item?.updatedAt)$("chartUpdated").textContent="آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar");
       const botEnabled=!!item?.botEnabled || !!window.__syrBotSettings?.[id]?.botEnabled;
@@ -1467,7 +1471,7 @@
       message($("accountMessage"), error.message, "error");
     }
   });
-  setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},5000);
+  setInterval(()=>{if(document.visibilityState==="visible"&&$("page-trading")?.classList.contains("active"))loadTradingChart();},5000);
   api("/api/health", { headers: {} })
     .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "متصل" : "الخادم متصل"; })
     .catch(() => { $("serverStatus").textContent = "غير متصل"; });
