@@ -960,7 +960,6 @@
       if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
       else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
       renderOpenTradeCards(data.openTrades||[]);
-      refreshOpenTradeCards(data.openTrades||[]);
       const pendingList=$("pendingLimitOrdersList");pendingList.replaceChildren();
       if(!data.limitOrders?.length)pendingList.textContent="لا توجد أوامر معلّقة حالياً.";
       else data.limitOrders.forEach(o=>{
@@ -1008,8 +1007,9 @@
   const refreshOpenedTradeUntilVisible = async tradeId => {
     if(!tradeId)return false;
     for(let attempt=0;attempt<5;attempt++){
-      const data=await loadPaperMarket();
+      const data=await api("/api/market/board",{headers:{}});
       if(data?.openTrades?.some(trade=>String(trade.id)===String(tradeId))){
+        renderOpenTradeCards(data.openTrades||[]);
         $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(tradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
         return true;
       }
