@@ -382,6 +382,7 @@ const runScheduledMarketBots = async (db, env) => {
     LEFT JOIN market_price_targets t ON t.instrument_id=b.instrument_id
     WHERE b.enabled=1 AND i.is_active=1 AND i.symbol='USD/SYP'`).all();
   let changed=0;
+  const marketUpdates=[];
   for (const bot of (result.results || [])) {
     const previous=Number(bot.priceMicro),target=Number(bot.targetPriceMicro||0);
     const started=Date.parse(String(bot.transitionStartedAt||""));
@@ -463,12 +464,13 @@ const runScheduledMarketBots = async (db, env) => {
     ]);
     if(Number(batch[0]?.meta?.changes||0)>0){
       changed++;
-      await publishMarketPrice(env,{instrumentId:bot.instrumentId,priceMicro:next,updatedAt:now});
+      marketUpdates.push({instrumentId:bot.instrumentId,priceMicro:next,updatedAt:now});
       await notifyTelegramPriceChange(env,previous,next).catch(error=>console.error("SYR_TRADER_TELEGRAM_STATE_ERROR",error instanceof Error?error.message:String(error)));
     }
   }
   await processPendingLimitOrders(db);
   await settleLiquidatedTrades(db);
+  for(const update of marketUpdates)await publishMarketPrice(env,update);
   return {checked:(result.results||[]).length,changed};
 };
 
