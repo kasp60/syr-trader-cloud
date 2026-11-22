@@ -353,15 +353,20 @@ const notifyTelegramPriceChange = async (env, previousPriceMicro, currentPriceMi
   if(Number(reservation.meta?.changes||0)!==1)return;
   const price=(current/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
   const marker=current>lastPrice?"🔹":"🔸";
-  const direction=current>lastPrice?"ارتفاع":"انخفاض";
+  const direction=current>lastPrice?"صعود":"هبوط";
+  const updatedAt=new Intl.DateTimeFormat("en-GB",{
+    timeZone:"Asia/Damascus",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"
+  }).format(new Date());
   const message=[
     "📊 سعر الصرف المباشر | SYR Trader",
     "🇸🇾 سعر الدولار في سوريا مقابل الليرة السورية (USD/SYP)",
     `${marker} السعر الحالي: ${price} ليرة سورية`,
     `📈 حركة السعر: ${direction}`,
+    `🕒 آخر تحديث: ${updatedAt} (توقيت دمشق)`,
     "",
     "#سعر_الدولار #سعر_الصرف #الدولار_في_سوريا #SYRTrader"
-  ].join("\\n");
+  ].join("\n");
   try {
     const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
       method:"POST",
