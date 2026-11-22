@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { marketQuote, tradeReserveLock } from "../src/reserve-risk.js";
 
-const reference = 1_000_000_000;
+const reference = 100_000_000;
 const bounds = { minReference: reference, maxReference: reference };
 
 test("two-sided quote applies the configured spread", () => {
   assert.ok(marketQuote(reference, "ask") > BigInt(reference));
   assert.ok(marketQuote(reference, "bid") < BigInt(reference));
-  assert.equal(marketQuote(reference, "ask") - marketQuote(reference, "bid"), 2_000_000n);
+  assert.equal(marketQuote(reference, "ask") - marketQuote(reference, "bid"), 200_000n);
 });
 
 test("long reserve requirement covers the fixed upper band of reference +0.5", () => {
