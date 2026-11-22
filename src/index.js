@@ -348,7 +348,7 @@ const notifyTelegramPriceChange = async (env, previousPriceMicro, currentPriceMi
   }
 };
 
-const MARKET_MAX_DEVIATION_BPS = 50; // Maximum market-price deviation: +/-0.5% around the moving admin reference.
+const MARKET_MAX_DEVIATION_MICRO = 25_000_000; // Fixed maximum deviation: +/-25 SYP around the admin reference.
 const MARKET_IMBALANCE_PRESSURE_BPS = 25; // Maximum directional pressure per scheduled tick at a fully one-sided book.
 
 const runScheduledMarketBots = async (db, env) => {
@@ -409,8 +409,8 @@ const runScheduledMarketBots = async (db, env) => {
     const reversion=reference>0?Math.max(-300,Math.min(300,Math.round(((reference-previous)/reference)*1200))):0;
     const boundedMove=Math.max(-120,Math.min(120,Math.round(Number(bot.driftBps)+noise*Number(bot.volatilityBps))));
     const rawNext=Math.max(1,Math.round(previous*(1+(reversion+boundedMove+imbalancePressureBps+dailyEventBps)/10000)));
-    const lowerBound=Math.max(1,Math.floor(reference*(10000-MARKET_MAX_DEVIATION_BPS)/10000));
-    const upperBound=Math.max(lowerBound,Math.ceil(reference*(10000+MARKET_MAX_DEVIATION_BPS)/10000));
+    const lowerBound=Math.max(1,Math.floor(reference-MARKET_MAX_DEVIATION_MICRO));
+    const upperBound=Math.max(lowerBound,Math.ceil(reference+MARKET_MAX_DEVIATION_MICRO));
     let next=Math.max(lowerBound,Math.min(upperBound,rawNext));
 
     // During the scheduled pulse only, avoid pushing an existing position
@@ -752,10 +752,10 @@ const walletApi = async (request, env, url) => {
     if(!exists)return json({ok:false,error:"الأداة غير موجودة"},404);
     if(exists.symbol==="USD/SYP"){
       const bounds=await getReserveReferenceBounds(env.DB);
-      const lower=BigInt(Math.floor(bounds.minReference))*9950n/10000n;
-      const upper=(BigInt(Math.ceil(bounds.maxReference))*10050n+9999n)/10000n;
-      if(BigInt(priceMicro)<lower||BigInt(priceMicro)>upper)
-        return json({ok:false,error:"السعر اليدوي يجب أن يبقى ضمن نطاق ±0.5% من السعر المرجعي الذي حددته الإدارة."},409);
+      const lower=BigInt(Math.max(1,Math.floor(bounds.minReference)))-25_000_000n;
+      const upper=BigInt(Math.ceil(bounds.maxReference))+25_000_000n;
+      if(BigInt(priceMicro)<(lower>0n?lower:1n)||BigInt(priceMicro)>upper)
+        return json({ok:false,error:"السعر اليدوي يجب أن يبقى ضمن نطاق ±25 من السعر المرجعي الذي حددته الإدارة."},409);
     }
     const previousRow=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(instrumentId).first();
     const previousPriceMicro=Number(previousRow?.priceMicro||0);
@@ -807,7 +807,7 @@ const walletApi = async (request, env, url) => {
     const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
     const balance=BigInt(reserve?.balanceMinor||0),required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0);
     if(required+lock>balance||reserved!==(required<balance?required:balance)||BigInt(reserve?.deficitMinor||0)>0n)
-      return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±0.5%. يلزم تمويل الاحتياطي أولاً."},409);
+      return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±25. يلزم تمويل الاحتياطي أولاً."},409);
     const quantityMicro=Number(quantityBig),marginCents=Number(marginMinor),reserveLock=Number(lock);
     const liquidationPriceMicro=Number((direction==="long"?entry*BigInt(leverage-1)/BigInt(leverage):entry*BigInt(leverage+1)/BigInt(leverage))||1n);
     const now=new Date().toISOString(),tradeId=crypto.randomUUID();
@@ -1029,7 +1029,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) SELECT 'syr-usd-syp',1,80,0,?,? WHERE changes()=1 ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
       env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) SELECT 'usd-syp','USD','SYP',?,?,? WHERE changes()=1 ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
     ]);
-    if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±0.5%. موّل الاحتياطي أولاً."},409);
+    if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±25. موّل الاحتياطي أولاً."},409);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
     return json({ok:true,targetRate:rate,fromPrice:Number(fromPriceMicro)/1000000,transitionMinutes,botEnabled:true});
   }

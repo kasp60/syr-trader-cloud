@@ -10,6 +10,7 @@ export const marketQuote = (midPrice, side) => {
 };
 
 const ceilDiv = (numerator, denominator) => (numerator + denominator - 1n) / denominator;
+const MAX_PRICE_DEVIATION_MICRO = 25_000_000n;
 
 export const tradeReserveLock = (direction, quantityMicro, entryPriceMicro, bounds) => {
   if (direction !== "long" && direction !== "short") throw new TypeError("invalid trade direction");
@@ -20,14 +21,16 @@ export const tradeReserveLock = (direction, quantityMicro, entryPriceMicro, boun
     throw new RangeError("invalid reserve exposure inputs");
 
   if (direction === "long") {
-    const upperMid = ceilDiv(maxReference * 10050n, 10000n);
+    const upperMid = maxReference + MAX_PRICE_DEVIATION_MICRO;
     const executableExit = marketQuote(upperMid, "bid");
     return executableExit > entry
       ? ceilDiv((executableExit - entry) * quantity, 1000000000000n)
       : 0n;
   }
 
-  const lowerMid = minReference * 9950n / 10000n;
+  const lowerMid = minReference > MAX_PRICE_DEVIATION_MICRO
+      ? minReference - MAX_PRICE_DEVIATION_MICRO
+      : 1n;
   const executableExit = marketQuote(lowerMid, "ask");
   return executableExit < entry
     ? ceilDiv(quantity * (entry - executableExit) * 100n, entry * 1000000n)
