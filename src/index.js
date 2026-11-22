@@ -593,7 +593,7 @@ const walletApi = async (request, env, url) => {
 
   if (url.pathname === "/api/market/quotes" && request.method === "GET") {
     const [rows,marketRows]=await Promise.all([
-      env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,
+      env.DB.prepare(`SELECT t.id,t.instrument_id AS instrumentId,t.direction,t.quantity_micro AS quantityMicro,
         t.entry_price_micro AS entryPriceMicro,t.margin_asset_symbol AS marginAssetSymbol,
         t.liquidation_price_micro AS liquidationPriceMicro,
         p.price_micro AS midPriceMicro,p.updated_at AS priceUpdatedAt
@@ -693,7 +693,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("SELECT o.id,o.direction,o.margin_minor AS marginMinor,o.margin_asset_symbol AS marginAssetSymbol,o.leverage,o.limit_price_micro AS limitPriceMicro,o.created_at AS createdAt,i.symbol FROM paper_limit_orders o JOIN market_instruments i ON i.id=o.instrument_id WHERE o.user_id=? AND o.status='pending' ORDER BY o.created_at DESC LIMIT 100").bind(user.id).all()
     ]);
     const [openTrades,closedTrades,walletRows]=await Promise.all([
-      env.DB.prepare(`SELECT t.id,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,
+      env.DB.prepare(`SELECT t.id,t.instrument_id AS instrumentId,t.direction,t.quantity_micro AS quantityMicro,t.entry_price_micro AS entryPriceMicro,
         t.leverage,t.margin_cents AS marginCents,t.margin_asset_symbol AS marginAssetSymbol,
         t.liquidation_price_micro AS liquidationPriceMicro,t.opened_at AS openedAt,i.symbol,p.price_micro AS midPriceMicro
         FROM paper_trades t JOIN market_instruments i ON i.id=t.instrument_id JOIN market_prices p ON p.instrument_id=t.instrument_id
