@@ -28,24 +28,26 @@ export const nextMarketPrice = ({
     throw new RangeError("invalid market movement inputs");
   }
 
-  const lower = Math.max(1, Math.floor(anchor - MAX_DEVIATION_MICRO));
-  const upper = Math.max(lower, Math.ceil(anchor + MAX_DEVIATION_MICRO));
+  // Admin reference is the hard floor; the bot may only move upward by 0.5 SYP.
+  const lower = anchor;
+  const upper = anchor + MAX_DEVIATION_MICRO;
   const boundedCurrent = clamp(current, lower, upper);
 
-  // The default 80 bps setting yields varied steps of roughly 0.03-0.40 SYP.
+  // With the default volatility, choose a fresh, variable step of about 0.10-0.40 SYP.
   const maxStep = clamp(Math.round(volatility * 5_000), 50_000, 450_000);
   const minStep = Math.min(30_000, Math.max(5_000, Math.floor(maxStep / 4)));
   const magnitude = minStep + Math.floor(magnitudeRoll * (maxStep - minStep + 1));
 
-  // A gentle pull toward the admin reference avoids long one-way runs.
-  // Drift and book pressure only bias the odds; they do not dictate each tick.
-  const distanceBias = clamp((anchor - boundedCurrent) / MAX_DEVIATION_MICRO, -1, 1) * 0.25;
+  // Direction remains random, with a soft bias toward the middle of the band.
+  // Configured drift and order-book pressure influence odds, never the hard floor.
+  const midpoint = lower + MAX_DEVIATION_MICRO / 2;
+  const positionBias = clamp((midpoint - boundedCurrent) / (MAX_DEVIATION_MICRO / 2), -1, 1) * 0.25;
   const configuredBias = clamp((drift + pressure) / 10_000, -0.15, 0.15);
-  const probabilityUp = clamp(0.5 + distanceBias + configuredBias, 0.1, 0.9);
+  const probabilityUp = clamp(0.5 + positionBias + configuredBias, 0.1, 0.9);
   let direction = directionRoll < probabilityUp ? 1 : -1;
 
   let available = direction > 0 ? upper - boundedCurrent : boundedCurrent - lower;
-  // Turn away from a boundary instead of repeatedly clipping at exactly +/-0.5.
+  // At either edge, reverse direction so every next price remains in the band.
   if (available <= 0) {
     direction *= -1;
     available = direction > 0 ? upper - boundedCurrent : boundedCurrent - lower;
