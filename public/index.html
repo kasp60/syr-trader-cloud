@@ -517,10 +517,11 @@
     $("sypBalance").textContent = Number(syp?.balanceMinor || 0).toLocaleString("en-US");
     $("usdBalance").textContent = (Number(usd?.balanceMinor || 0) / 100).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
     const rateText = data.exchangeRate?.rate > 0
-      ? "سعر الإدارة: 1 دولار = " + Number(data.exchangeRate.rate).toLocaleString("en-US") + " ليرة"
+      ? "سعر الإدارة: 1 دولار = " + Number(data.exchangeRate.rate).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " ليرة"
       : "سعر الصرف غير محدد من الإدارة بعد.";
     $("exchangeRateView").textContent = rateText;
-    if (data.user.role === "admin" && data.exchangeRate?.rate > 0) $("exchangeRateInput").value = data.exchangeRate.rate;
+    if (data.user.role === "admin" && data.exchangeRate?.rate > 0) $("exchangeRateInput").value = Number(data.exchangeRate.rate).toFixed(2);
+    $("exchangeRateInput").dataset.originalRate = String(data.exchangeRate.rate);
     loadLedger();
     loadFinanceRequests();
     loadPaperMarket();
@@ -828,7 +829,7 @@
         const side=entry.side==="buy"?"شراء":"بيع";
         const qty=(Math.abs(Number(entry.quantityDeltaMicro))/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
         const cash=(Math.abs(Number(entry.cashDeltaCents))/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
-        const price=(Number(entry.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+        const price=(Number(entry.priceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
         const date=new Date(entry.createdAt).toLocaleString("ar");
         addTextRow(container,side+" · "+entry.symbol+" · "+qty+" · سعر "+price+" ليرة · إجمالي "+cash+" ليرة",date);
       });
@@ -848,7 +849,7 @@
         const info=document.createElement("div");
         const title=document.createElement("strong"); title.textContent=item.symbol+" · "+item.name;
         const detail=document.createElement("div"); detail.className="muted";
-        detail.textContent=(item.isActive?"نشطة":"موقوفة")+" · "+(item.priceMicro?(Number(item.priceMicro)/1000000).toLocaleString("en-US")+" ليرة":"بلا سعر")+" · بوت "+(item.botEnabled?"يعمل بالخلفية":"متوقف");
+        detail.textContent=(item.isActive?"نشطة":"موقوفة")+" · "+(item.priceMicro?(Number(item.priceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة":"بلا سعر")+" · بوت "+(item.botEnabled?"يعمل بالخلفية":"متوقف");
         info.append(title,detail);
         const action=document.createElement("button"); action.type="button";
         action.textContent=item.isActive?"إيقاف":"تفعيل";
@@ -897,7 +898,7 @@
       const pnl=t.direction==="long"?(current-entry)*quantity:(entry-current)/entry*quantity;
       const currentNode=row.querySelector('[data-trade-value="current"]');
       const pnlNode=row.querySelector('[data-trade-value="pnl"]');
-      if(currentNode)currentNode.textContent=current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة";
+      if(currentNode)currentNode.textContent=current.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة";
       if(pnlNode){
         const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
         pnlNode.textContent=(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset;
@@ -924,9 +925,9 @@
           heading.append(title,status);
           const details=document.createElement("div");details.className="contract-details";
           const addDetail=(label,value,extra="",key="")=>{const cell=document.createElement("div");const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value;if(extra)v.className=extra;if(key)v.dataset.tradeValue=key;cell.append(l,v);details.appendChild(cell);};
-          addDetail("سعر الدخول",entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
-          addDetail("السعر الحالي",current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","","current");
-          addDetail("سعر التصفية",liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","liquidation-value");
+          addDetail("سعر الدخول",entry.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة");
+          addDetail("السعر الحالي",current.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة","","current");
+          addDetail("سعر التصفية",liq.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة","liquidation-value");
           addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
           addDetail("حجم العقد",qty);
           addDetail("الرافعة المالية",Number(t.leverage)+"x");
@@ -947,7 +948,7 @@
       const market = $("paperMarketList"), tradeSelect=$("paperInstrument"), adminSelect=$("priceInstrument"), chartSelect=$("chartInstrument");
       market.replaceChildren(); tradeSelect.replaceChildren(); adminSelect.replaceChildren(); chartSelect.replaceChildren();
       data.market.forEach(item => {
-        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة" : "السعر غير محدد";
+        const price = item.priceMicro ? (Number(item.priceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة" : "السعر غير محدد";
         const updated = item.updatedAt ? "آخر تحديث: "+new Date(item.updatedAt).toLocaleString("ar") : "لم يحدد المدير سعراً بعد";
         addTextRow(market,item.symbol+" · "+item.name,price+" · "+updated+" · سعر يدوي وليس مباشراً");
         const opt=document.createElement("option"); opt.value=item.id; opt.textContent=item.symbol+" · "+item.name;
@@ -975,7 +976,7 @@
         heading.append(title,status);
         const details=document.createElement("div");details.className="contract-details";
         const addDetail=(label,value)=>{const cell=document.createElement("div"),l=document.createElement("span"),v=document.createElement("strong");l.textContent=label;v.textContent=value;cell.append(l,v);details.appendChild(cell);};
-        addDetail("سعر التنفيذ المحدد",(Number(o.limitPriceMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
+        addDetail("سعر التنفيذ المحدد",(Number(o.limitPriceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة");
         addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
         addDetail("الرافعة المالية",Number(o.leverage)+"x");
         addDetail("وقت إنشاء الأمر",new Date(o.createdAt).toLocaleString("ar"));
@@ -989,7 +990,7 @@
         const status=t.status==="liquidated"?"تصفية تلقائية":"مغلقة يدوياً";
         const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
         const pnl=Number(t.pnlCents)/(t.marginAssetSymbol==="USD"?100:1);
-        addTextRow(closedList,(t.direction==="long"?"شراء":"بيع")+" · "+status+" · "+new Date(t.closedAt).toLocaleString("ar"),"دخول "+(Number(t.entryPriceMicro)/1000000).toLocaleString("en-US")+" · خروج "+(Number(t.exitPriceMicro)/1000000).toLocaleString("en-US")+" ليرة · النتيجة "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
+        addTextRow(closedList,(t.direction==="long"?"شراء":"بيع")+" · "+status+" · "+new Date(t.closedAt).toLocaleString("ar"),"دخول "+(Number(t.entryPriceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" · خروج "+(Number(t.exitPriceMicro)/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})+" ليرة · النتيجة "+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
       });
       const terminalOrders=$("terminalOrders");terminalOrders.replaceChildren();
       if(!data.orders.length)terminalOrders.textContent="لا توجد صفقات منفذة.";
@@ -1027,7 +1028,7 @@
     const svg=$("marketChart");svg.replaceChildren();const ns="http://www.w3.org/2000/svg";
     const el=(tag,attrs)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;};
     const addText=(x,y,value,anchor="end",size=13,color="#a9c4dc")=>{const t=el("text",{x,y,fill:color,"font-size":size,"text-anchor":anchor});t.textContent=value;svg.appendChild(t);};
-    const fmt=v=>Number(v).toLocaleString("en-US",{maximumFractionDigits:2});
+    const fmt=v=>Number(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
     const stats=$("chartStats"),indicator=$("chartIndicators");
     const valid=latestChartPoints.map((p,i)=>({price:Number(p.priceMicro)/1000000,time:Number.isFinite(Date.parse(p.createdAt))?Date.parse(p.createdAt):i*60000})).filter(p=>Number.isFinite(p.price)&&p.price>0);
     if(!valid.length){const badge=$("chartLastPrice");if(badge){badge.textContent="بانتظار السعر";badge.classList.remove("price-down");badge.classList.add("price-up");}addText(550,280,"لا توجد حركة مسجلة بعد","middle",19);if(stats)stats.innerHTML="<div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div>";if(indicator)indicator.querySelectorAll("strong").forEach(x=>x.textContent="—");return;}
@@ -1439,13 +1440,20 @@
   });
   $("saveRateButton").addEventListener("click", async () => {
     const button = $("saveRateButton");
+    const rateInput = $("exchangeRateInput");
+    const originalRate = Number(rateInput.dataset.originalRate);
+    const rateValue = Number.isFinite(originalRate) && rateInput.value === originalRate.toFixed(2)
+      ? originalRate
+      : Number(rateInput.value);
     button.disabled = true;
     message($("rateMessage"), "جارٍ حفظ سعر الصرف...");
     try {
       const data = await api("/api/admin/exchange-rate", {
         method: "POST",
-        body: JSON.stringify({ rate: Number($("exchangeRateInput").value), transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
+        body: JSON.stringify({ rate: rateValue, transitionMinutes: Number($("rateTransitionMinutes").value || 15) })
       });
+      rateInput.dataset.originalRate = String(rateValue);
+      rateInput.value = rateValue.toFixed(2);
       message($("rateMessage"), "تم اعتماد السعر الجديد، وسيصل إليه السوق تدريجياً خلال " + data.transitionMinutes + " دقيقة.", "success");
       await loadPaperMarket();
       await loadTradingChart();
