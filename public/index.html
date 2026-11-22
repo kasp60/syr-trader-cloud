@@ -1264,7 +1264,7 @@
     const protocol=location.protocol==="https:"?"wss:":"ws:";
     const socket=new WebSocket(protocol+"//"+location.host+"/api/market/stream");
     marketSocket=socket;
-    socket.addEventListener("open",()=>{if(marketSocket===socket)marketSocketRetryDelay=1000;});
+    socket.addEventListener("open",()=>{if(marketSocket===socket){marketSocketRetryDelay=1000;if($("page-trading")?.classList.contains("active"))loadTradingChart();}});
     socket.addEventListener("message",event=>{
       let update;try{update=JSON.parse(event.data);}catch{return;}
       if(update?.type!=="market_price"||!Number.isSafeInteger(Number(update.priceMicro))||Number(update.priceMicro)<=0)return;
