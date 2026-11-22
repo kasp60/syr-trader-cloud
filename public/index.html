@@ -1254,8 +1254,14 @@
     if (adminNav) adminNav.hidden = true;
   };
   let marketSocket=null,marketSocketRetryTimer=null,marketSocketRetryDelay=1000;
+  let marketSocketHeartbeatTimer=null,marketSocketPongTimer=null,marketStreamHasOpened=false;
+  const clearMarketSocketTimers = () => {
+    if(marketSocketHeartbeatTimer){window.clearInterval(marketSocketHeartbeatTimer);marketSocketHeartbeatTimer=null;}
+    if(marketSocketPongTimer){window.clearTimeout(marketSocketPongTimer);marketSocketPongTimer=null;}
+  };
   const disconnectMarketStream = () => {
     if(marketSocketRetryTimer){window.clearTimeout(marketSocketRetryTimer);marketSocketRetryTimer=null;}
+    clearMarketSocketTimers();
     const socket=marketSocket;marketSocket=null;
     if(socket){socket.onclose=null;try{socket.close(1000,"session ended");}catch{}}
   };
@@ -1265,8 +1271,30 @@
     const protocol=location.protocol==="https:"?"wss:":"ws:";
     const socket=new WebSocket(protocol+"//"+location.host+"/api/market/stream");
     marketSocket=socket;
-    socket.addEventListener("open",()=>{if(marketSocket===socket){marketSocketRetryDelay=1000;if($("page-trading")?.classList.contains("active"))loadTradingChart();}});
+    socket.addEventListener("open",()=>{
+      if(marketSocket!==socket)return;
+      marketSocketRetryDelay=1000;
+      clearMarketSocketTimers();
+      marketSocketHeartbeatTimer=window.setInterval(()=>{
+        if(marketSocket!==socket||socket.readyState!==WebSocket.OPEN)return;
+        try{
+          socket.send("ping");
+          if(marketSocketPongTimer)window.clearTimeout(marketSocketPongTimer);
+          marketSocketPongTimer=window.setTimeout(()=>{
+            if(marketSocket===socket&&socket.readyState===WebSocket.OPEN)socket.close(4000,"heartbeat timeout");
+          },10000);
+        }catch{socket.close();}
+      },25000);
+      if(marketStreamHasOpened&&$("page-trading")?.classList.contains("active")){
+        loadPaperMarket().catch(error=>console.warn("Market snapshot after stream reconnect failed",error));
+      }
+      marketStreamHasOpened=true;
+    });
     socket.addEventListener("message",event=>{
+      if(event.data==="pong"){
+        if(marketSocketPongTimer){window.clearTimeout(marketSocketPongTimer);marketSocketPongTimer=null;}
+        return;
+      }
       let update;try{update=JSON.parse(event.data);}catch{return;}
       if(update?.type!=="market_price"||!Number.isSafeInteger(Number(update.priceMicro))||Number(update.priceMicro)<=0)return;
       const selectedId=$("chartInstrument")?.value;
@@ -1292,11 +1320,17 @@
     });
     socket.addEventListener("close",()=>{
       const wasCurrent=marketSocket===socket;
-      if(wasCurrent)marketSocket=null;
+      if(wasCurrent){
+        marketSocket=null;
+        clearMarketSocketTimers();
+      }
       if(wasCurrent&&window.__syrCurrentUserId&&document.visibilityState==="visible"){
         const delay=marketSocketRetryDelay;
-        marketSocketRetryDelay=Math.min(30000,marketSocketRetryDelay*2);
-        marketSocketRetryTimer=window.setTimeout(connectMarketStream,delay);
+        marketSocketRetryDelay=Math.min(10000,marketSocketRetryDelay*2);
+        marketSocketRetryTimer=window.setTimeout(()=>{
+          marketSocketRetryTimer=null;
+          connectMarketStream();
+        },delay);
       }
     });
     socket.addEventListener("error",()=>socket.close());
