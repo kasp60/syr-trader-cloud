@@ -21,3 +21,11 @@ database_id = "77dcf242-f171-4d88-81a8-863d9fae3366"
 
 [triggers]
 crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "MARKET_STREAM"
+class_name = "MarketStream"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MarketStream"]

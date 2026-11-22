@@ -526,6 +526,7 @@
     loadPaperMarket();
     loadPaperHistory();
     loadTradingChart();
+    connectMarketStream();
     if (data.user.role === "admin") {
       $("adminPanel").classList.remove("hidden");
       loadAdminUsers(); loadAdminWallets(); loadAdminMarketInstruments(); loadAdminFinanceRequests();
@@ -1242,12 +1243,58 @@
   }catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
+    window.__syrCurrentUserId=null;
+    disconnectMarketStream();
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
     $("introText").textContent = "سجّل دخولك للوصول إلى محفظتك ومتابعة الأسعار لحظة بلحظة.";
     window.__syrIsAdmin = false;
     const adminNav = document.querySelector('[data-app-page="admin"]');
     if (adminNav) adminNav.hidden = true;
+  };
+  let marketSocket=null,marketSocketRetryTimer=null,marketSocketRetryDelay=1000;
+  const disconnectMarketStream = () => {
+    if(marketSocketRetryTimer){window.clearTimeout(marketSocketRetryTimer);marketSocketRetryTimer=null;}
+    const socket=marketSocket;marketSocket=null;
+    if(socket){socket.onclose=null;try{socket.close(1000,"session ended");}catch{}}
+  };
+  const connectMarketStream = () => {
+    if(!window.__syrCurrentUserId||document.visibilityState!=="visible")return;
+    if(marketSocket&&(marketSocket.readyState===WebSocket.OPEN||marketSocket.readyState===WebSocket.CONNECTING))return;
+    const protocol=location.protocol==="https:"?"wss:":"ws:";
+    const socket=new WebSocket(protocol+"//"+location.host+"/api/market/stream");
+    marketSocket=socket;
+    socket.addEventListener("open",()=>{if(marketSocket===socket){marketSocketRetryDelay=1000;if($("page-trading")?.classList.contains("active"))loadTradingChart();}});
+    socket.addEventListener("message",event=>{
+      let update;try{update=JSON.parse(event.data);}catch{return;}
+      if(update?.type!=="market_price"||!Number.isSafeInteger(Number(update.priceMicro))||Number(update.priceMicro)<=0)return;
+      const selectedId=$("chartInstrument")?.value;
+      if(selectedId===update.instrumentId&&$("page-trading")?.classList.contains("active")){
+        const points=[...latestChartPoints];
+        const last=points[points.length-1];
+        if(!last||Number(last.priceMicro)!==Number(update.priceMicro)||Date.parse(last.createdAt)<Date.parse(update.updatedAt)){
+          points.push({priceMicro:Number(update.priceMicro),createdAt:update.updatedAt,source:"live"});
+          drawMarketChart(points.slice(-1440),latestOpenTrades);
+        }
+        if($("chartUpdated"))$("chartUpdated").textContent="آخر تحديث: "+new Date(update.updatedAt).toLocaleString("ar");
+      }
+      if($("page-trading")?.classList.contains("active")){
+        api("/api/market/quotes",{headers:{}}).then(snapshot=>{
+          refreshOpenTradeCards(snapshot.openTrades||[]);
+          if(selectedId===update.instrumentId)drawMarketChart(latestChartPoints,snapshot.openTrades||[]);
+        }).catch(()=>{});
+      }
+    });
+    socket.addEventListener("close",()=>{
+      const wasCurrent=marketSocket===socket;
+      if(wasCurrent)marketSocket=null;
+      if(wasCurrent&&window.__syrCurrentUserId&&document.visibilityState==="visible"){
+        const delay=marketSocketRetryDelay;
+        marketSocketRetryDelay=Math.min(30000,marketSocketRetryDelay*2);
+        marketSocketRetryTimer=window.setTimeout(connectMarketStream,delay);
+      }
+    });
+    socket.addEventListener("error",()=>socket.close());
   };
   const api = async (path, options = {}) => {
     const { timeoutMs = 15000, ...requestOptions } = options;
@@ -1467,7 +1514,13 @@
       message($("accountMessage"), error.message, "error");
     }
   });
-  setInterval(()=>{if($("page-trading")?.classList.contains("active"))loadTradingChart();},5000);
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible"){connectMarketStream();if($("page-trading")?.classList.contains("active"))loadTradingChart();}
+    else disconnectMarketStream();
+  });
+  setInterval(()=>{
+    if(document.visibilityState==="visible"&&$("page-trading")?.classList.contains("active")&&(!marketSocket||marketSocket.readyState!==WebSocket.OPEN))loadTradingChart();
+  },5000);
   api("/api/health", { headers: {} })
     .then((data) => { $("serverStatus").textContent = data.database === "connected" ? "متصل" : "الخادم متصل"; })
     .catch(() => { $("serverStatus").textContent = "غير متصل"; });
