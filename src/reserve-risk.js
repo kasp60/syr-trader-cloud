@@ -10,7 +10,7 @@ export const marketQuote = (midPrice, side) => {
 };
 
 const ceilDiv = (numerator, denominator) => (numerator + denominator - 1n) / denominator;
-const MAX_PRICE_DEVIATION_MICRO = 25_000_000n;
+const MAX_PRICE_DEVIATION_MICRO = 500_000n;
 
 export const tradeReserveLock = (direction, quantityMicro, entryPriceMicro, bounds) => {
   if (direction !== "long" && direction !== "short") throw new TypeError("invalid trade direction");
