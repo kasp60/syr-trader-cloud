@@ -1243,6 +1243,7 @@
   }catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
   const showAuth = () => {
+    window.__syrCurrentUserId=null;
     disconnectMarketStream();
     $("accountPanel").classList.add("hidden");
     $("authPanel").classList.remove("hidden");
