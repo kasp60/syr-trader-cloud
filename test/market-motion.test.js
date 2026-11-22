@@ -20,6 +20,7 @@ test("admin reference is the hard floor and price never exceeds +0.5 SYP", () =>
   for (let i = 0; i < 100; i++) {
     const next = move(reference + (i * 10_000), (i % 10) / 10, (i % 7) / 7);
     assert.ok(next >= lower && next <= upper);
+    assert.equal(next % 10_000, 0, "bot price must be an exact piastre");
   }
 });
 
@@ -54,6 +55,19 @@ test("changing the admin reference resets the allowed band to the new floor", ()
     directionSample: 0.5
   });
   assert.ok(next >= nextReference && next <= nextReference + 500_000);
+  assert.equal(next % 10_000, 0);
+});
+
+test("sub-piastre previous prices and admin references are normalized to cents", () => {
+  const next = nextMarketPrice({
+    previous: 151_123_456,
+    reference: 151_004_321,
+    volatilityBps: 80,
+    magnitudeSample: 0.5,
+    directionSample: 0.1
+  });
+  assert.equal(next % 10_000, 0);
+  assert.ok(next >= 151_000_000 && next <= 151_500_000);
 });
 
 test("invalid movement samples are rejected", () => {
