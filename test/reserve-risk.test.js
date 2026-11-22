@@ -31,7 +31,7 @@ test("short reserve requirement covers the fixed lower band of reference -0.5", 
 
 test("no reserve is locked when the permitted band cannot produce customer profit", () => {
   assert.equal(tradeReserveLock("long", 1_000_000n, 2_000_000_000n, bounds), 0n);
-  assert.equal(tradeReserveLock("short", 100_000_000n, 900_000_000n, bounds), 0n);
+  assert.equal(tradeReserveLock("short", 100_000_000n, 90_000_000n, bounds), 0n);
 });
 
 test("risk calculation rounds upward rather than under-reserving", () => {
