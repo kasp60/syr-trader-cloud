@@ -351,13 +351,25 @@ const notifyTelegramPriceChange = async (env, previousPriceMicro, currentPriceMi
       AND (last_sent_at IS NULL OR last_sent_at<=?)`)
     .bind(current,now,lastPrice,cutoff).run();
   if(Number(reservation.meta?.changes||0)!==1)return;
-  const price=(current/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
-  const marker=current>lastPrice?"🔹":"🔸";
+  const price=(current/1000000).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const marker=current>lastPrice?"🟢⬆️":"🔴⬇️";
+  const updatedAt=new Intl.DateTimeFormat("en-GB",{
+    timeZone:"Asia/Damascus",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"
+  }).format(new Date());
+  const message=[
+    "📊 سعر الصرف المباشر | SYR Trader",
+    "🇸🇾 سعر الدولار في سوريا مقابل الليرة السورية (USD/SYP)",
+    `${marker} السعر الحالي: ${price} ليرة سورية`,
+    `🕒 آخر تحديث: ${updatedAt} (توقيت دمشق)`,
+    "",
+    "#سعر_الدولار #سعر_الصرف #الدولار_في_سوريا #SYRTrader"
+  ].join("\n");
   try {
     const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({chat_id:channelId,text:`${marker} ${price}`,disable_web_page_preview:true})
+      body:JSON.stringify({chat_id:channelId,text:message,disable_web_page_preview:true})
     });
     const result=await response.json();
     if(!response.ok||!result.ok)throw new Error(result.description||"Telegram send failed");
