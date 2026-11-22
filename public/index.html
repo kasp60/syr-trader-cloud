@@ -1286,8 +1286,9 @@
       }
     });
     socket.addEventListener("close",()=>{
-      if(marketSocket===socket)marketSocket=null;
-      if(window.__syrCurrentUserId&&document.visibilityState==="visible"){
+      const wasCurrent=marketSocket===socket;
+      if(wasCurrent)marketSocket=null;
+      if(wasCurrent&&window.__syrCurrentUserId&&document.visibilityState==="visible"){
         const delay=marketSocketRetryDelay;
         marketSocketRetryDelay=Math.min(30000,marketSocketRetryDelay*2);
         marketSocketRetryTimer=window.setTimeout(connectMarketStream,delay);
