@@ -304,6 +304,7 @@
           <h3>التداول بالليرة</h3>
           <p class="muted">تداول الدولار مقابل الليرة ضمن سوق المنصة، مع عرض الأسعار ومؤشرات السوق ومتابعة صفقاتك من مكان واحد.</p>
           <div class="trade-toolbar"><strong>الدولار مقابل الليرة</strong><select id="chartInstrument" class="hidden" aria-hidden="true"></select></div>
+          <div class="notice" role="note">ملاحظة عن فرق السعر: الشارت يعرض السعر المتوسط، أما تنفيذ الشراء والبيع فيعتمد على سعر البيع والشراء (Bid / Ask). لذلك قد يظهر فرق بين السعرين، مثل 15 قرشاً أحياناً، بحسب فرق السعر (Spread) وقت التنفيذ. هذا الفرق طبيعي وليس خطأ في تحديث الشارت.</div>
           <div class="chart-controls" aria-label="إعدادات الشارت"><div class="chart-control-row chart-range-row" aria-label="الفترة الزمنية"><span class="chart-control-label">الفترة الزمنية:</span><button type="button" data-chart-range="1m" aria-pressed="true">1 دقيقة</button><button type="button" data-chart-range="5m" aria-pressed="false">5 دقائق</button><button type="button" data-chart-range="15m" aria-pressed="false">15 دقيقة</button><button type="button" data-chart-range="1h" aria-pressed="false">ساعة</button><button type="button" data-chart-range="1d" aria-pressed="false">يوم</button></div><div class="chart-control-row chart-count-row" aria-label="عدد الشموع"><span class="chart-control-label">عدد الشموع:</span><button type="button" data-chart-count="30">30</button><button type="button" data-chart-count="60" aria-pressed="true">60</button><button type="button" data-chart-count="120">120</button></div></div><div class="chart-panel"><div class="chart-heading"><strong>مخطط الشموع اليابانية · USD / SYP</strong><span id="chartLastPrice" class="price-up">بانتظار السعر</span></div><svg id="marketChart" viewBox="0 0 1100 650" preserveAspectRatio="none" role="img" aria-label="مخطط شموع يابانية لسعر الدولار مقابل الليرة"><text x="550" y="280" fill="#d5e6f7" text-anchor="middle">بانتظار تحديد سعر الصرف</text></svg><div class="chart-legend"><span><i style="background:#27d6a5"></i>شمعة صاعدة</span><span><i style="background:#ff7185"></i>شمعة هابطة</span><span><i style="background:#f6c85f"></i>متوسط 20</span><span><i style="background:#65aaff"></i>متوسط 50</span></div></div><div id="chartIndicators" class="chart-indicators"><div><span>RSI (14)</span><strong>—</strong></div><div><span>MACD (12,26,9)</span><strong>—</strong></div><div><span>متوسط 20 شمعة</span><strong>—</strong></div><div><span>تحديثات السعر</span><strong>—</strong></div></div>
           <div id="chartStats" class="chart-stats"><div><span>السعر الحالي</span><strong>—</strong></div><div><span>أعلى سعر</span><strong>—</strong></div><div><span>أدنى سعر</span><strong>—</strong></div><div><span>التغير</span><strong>—</strong></div></div>
           <p id="chartUpdated" class="muted">سيبدأ الرسم بعد تحديد المدير سعر الصرف.</p>
@@ -464,7 +465,7 @@
   </main>
   <footer>SYR TRADER
     <span aria-hidden="true"> · </span>
-    <a href="https://t.me/syriatrader_app" target="_blank" rel="noopener noreferrer" aria-label="الانضمام إلى قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
+    <a href="https://t.me/syriatrader_app" aria-label="فتح قناة SYR TRADER على تيليجرام">قناة SYR TRADER على تيليجرام</a>
   </footer>
 <script>
 (() => {
@@ -905,6 +906,37 @@
     });
   };
 
+  const renderOpenTradeCards = trades => {
+    const openTrades=$("openTradesList");openTrades.replaceChildren();
+    if(!trades?.length)openTrades.textContent="لا توجد صفقات مفتوحة حالياً.";
+    else trades.forEach(t=>{
+          const row=document.createElement("article");row.className="trade-contract-card";row.dataset.tradeId=String(t.id);
+          const entry=Number(t.entryPriceMicro)/1000000,current=Number(t.currentPriceMicro)/1000000,liq=Number(t.liquidationPriceMicro)/1000000;
+          const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
+          const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
+          const margin=Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1);
+          const pnl=t.direction==="long"?(current-entry)*Number(t.quantityMicro)/1000000:(entry-current)/entry*(Number(t.quantityMicro)/1000000);
+          const heading=document.createElement("div");heading.className="contract-heading";
+          const title=document.createElement("strong");title.textContent=t.direction==="long"?"شراء · LONG":"بيع · SHORT";
+          const status=document.createElement("span");status.textContent="مفتوحة";status.className="contract-status";
+          heading.append(title,status);
+          const details=document.createElement("div");details.className="contract-details";
+          const addDetail=(label,value,extra="",key="")=>{const cell=document.createElement("div");const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value;if(extra)v.className=extra;if(key)v.dataset.tradeValue=key;cell.append(l,v);details.appendChild(cell);};
+          addDetail("سعر الدخول",entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
+          addDetail("السعر الحالي",current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","","current");
+          addDetail("سعر التصفية",liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","liquidation-value");
+          addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
+          addDetail("حجم العقد",qty);
+          addDetail("الرافعة المالية",Number(t.leverage)+"x");
+          addDetail("الربح / الخسارة التقديرية",(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset,pnl>=0?"profit-value":"loss-value","pnl");
+          const close=document.createElement("button");close.type="button";close.className="close-contract-button";close.textContent="إغلاق الصفقة";
+          close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/(result.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
+          row.append(heading,details,close);openTrades.appendChild(row);
+  
+    });
+    refreshOpenTradeCards(trades||[]);
+  };
+
   const loadPaperMarket = async () => {
     try {
       const data = await api("/api/market/board", { headers: {} });
@@ -928,34 +960,7 @@
       const terminalPositions=$("terminalPositions");terminalPositions.replaceChildren();
       if(!data.positions.length)terminalPositions.textContent="لا توجد مراكز مفتوحة.";
       else data.positions.forEach(p=>addTextRow(terminalPositions,p.symbol,(Number(p.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6})));
-      const openTrades=$("openTradesList");openTrades.replaceChildren();
-      if(!data.openTrades?.length)openTrades.textContent="لا توجد صفقات مفتوحة حالياً.";
-      else data.openTrades.forEach(t=>{
-        const row=document.createElement("article");row.className="trade-contract-card";row.dataset.tradeId=String(t.id);
-        const entry=Number(t.entryPriceMicro)/1000000,current=Number(t.currentPriceMicro)/1000000,liq=Number(t.liquidationPriceMicro)/1000000;
-        const qty=(Number(t.quantityMicro)/1000000).toLocaleString("en-US",{maximumFractionDigits:6});
-        const asset=t.marginAssetSymbol==="USD"?"دولار":"ليرة";
-        const margin=Number(t.marginCents)/(t.marginAssetSymbol==="USD"?100:1);
-        const pnl=t.direction==="long"?(current-entry)*Number(t.quantityMicro)/1000000:(entry-current)/entry*(Number(t.quantityMicro)/1000000);
-        const heading=document.createElement("div");heading.className="contract-heading";
-        const title=document.createElement("strong");title.textContent=t.direction==="long"?"شراء · LONG":"بيع · SHORT";
-        const status=document.createElement("span");status.textContent="مفتوحة";status.className="contract-status";
-        heading.append(title,status);
-        const details=document.createElement("div");details.className="contract-details";
-        const addDetail=(label,value,extra="",key="")=>{const cell=document.createElement("div");const l=document.createElement("span");l.textContent=label;const v=document.createElement("strong");v.textContent=value;if(extra)v.className=extra;if(key)v.dataset.tradeValue=key;cell.append(l,v);details.appendChild(cell);};
-        addDetail("سعر الدخول",entry.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة");
-        addDetail("السعر الحالي",current.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","","current");
-        addDetail("سعر التصفية",liq.toLocaleString("en-US",{maximumFractionDigits:2})+" ليرة","liquidation-value");
-        addDetail("الهامش المحجوز",margin.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset);
-        addDetail("حجم العقد",qty);
-        addDetail("الرافعة المالية",Number(t.leverage)+"x");
-        addDetail("الربح / الخسارة التقديرية",(pnl>0?"+":"")+pnl.toLocaleString("en-US",{maximumFractionDigits:2})+" "+asset,pnl>=0?"profit-value":"loss-value","pnl");
-        const close=document.createElement("button");close.type="button";close.className="close-contract-button";close.textContent="إغلاق الصفقة";
-        close.addEventListener("click",async()=>{close.disabled=true;try{const result=await api("/api/paper/trade-close",{method:"POST",body:JSON.stringify({tradeId:t.id})});message($("terminalMessage"),"تم إغلاق الصفقة. الربح/الخسارة: "+(Number(result.pnlCents)/(result.marginAssetSymbol==="USD"?100:1)).toLocaleString("en-US",{maximumFractionDigits:2})+" "+(result.marginAssetSymbol==="USD"?"دولار":"ليرة"),"success");await loadPaperMarket();}catch(e){message($("terminalMessage"),e.message,"error");close.disabled=false;}});
-        row.append(heading,details,close);openTrades.appendChild(row);
-      });
-
-      refreshOpenTradeCards(data.openTrades||[]);
+      renderOpenTradeCards(data.openTrades||[]);
       const pendingList=$("pendingLimitOrdersList");pendingList.replaceChildren();
       if(!data.limitOrders?.length)pendingList.textContent="لا توجد أوامر معلّقة حالياً.";
       else data.limitOrders.forEach(o=>{
@@ -1003,8 +1008,9 @@
   const refreshOpenedTradeUntilVisible = async tradeId => {
     if(!tradeId)return false;
     for(let attempt=0;attempt<5;attempt++){
-      const data=await loadPaperMarket();
+      const data=await api("/api/market/board",{headers:{}});
       if(data?.openTrades?.some(trade=>String(trade.id)===String(tradeId))){
+        renderOpenTradeCards(data.openTrades||[]);
         $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(tradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
         return true;
       }
@@ -1201,7 +1207,7 @@
   $("terminalOrderForm").addEventListener("submit",async event=>{event.preventDefault();const b=$("terminalOrderForm").querySelector('button[type="submit"]');b.disabled=true;try{
     const direction=$("terminalSide").value==="buy"?"long":"short";
     const leverage=Number($("terminalLeverage").value),margin=Number($("terminalQuantity").value),instrumentId=$("chartInstrument").value;
-    let openedTradeId=null;
+    let openedTradeId=null,openedTradeData=null;
     if($("terminalOrderType").value==="limit"){
       const result=await api("/api/paper/limit-order",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage,limitPrice:Number($("terminalLimitPrice").value)})});
       $("terminalQuantity").value="";$("terminalLimitPrice").value="";
@@ -1209,13 +1215,29 @@
       else message($("terminalMessage"),"تم وضع الأمر المعلّق وحجز الهامش حتى التنفيذ أو الإلغاء.", "success");
     }else{
       const result=await api("/api/paper/trade-open",{method:"POST",body:JSON.stringify({instrumentId,direction,margin,leverage})});
+      openedTradeData=result;
       openedTradeId=result.tradeId||null;
       $("terminalQuantity").value="";
     }
     if(openedTradeId){
-      const visible=await refreshOpenedTradeUntilVisible(openedTradeId);
-      if(visible)message($("terminalMessage"),"تم فتح العقد وظهر مباشرةً ضمن عقودك المفتوحة.", "success");
-      else message($("terminalMessage"),"تم فتح العقد وحجز الهامش، لكن تعذر تحديث قائمة العقود الآن. أعد المحاولة بعد لحظات دون إعادة فتح العقد.", "error");
+      if($("terminalOrderType").value!=="limit"){
+        const optimisticTrade={
+          id:openedTradeId,direction,quantityMicro:Math.round(Number(openedTradeData.quantity)*1000000),
+          entryPriceMicro:Number(openedTradeData.entryPriceMicro),currentPriceMicro:Number(openedTradeData.entryPriceMicro),
+          liquidationPriceMicro:Number(openedTradeData.liquidationPriceMicro),marginCents:Number(openedTradeData.marginCents),
+          marginAssetSymbol:openedTradeData.marginAssetSymbol,leverage:Number(openedTradeData.leverage)
+        };
+        renderOpenTradeCards([optimisticTrade,...latestOpenTrades.filter(t=>String(t.id)!==String(openedTradeId))]);
+        $("openTradesList")?.querySelector('[data-trade-id="'+CSS.escape(String(openedTradeId))+'"]')?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
+        message($("terminalMessage"),"تم فتح العقد وظهر فوراً. جارٍ مزامنة بياناته.", "success");
+        refreshOpenedTradeUntilVisible(openedTradeId).then(visible=>{
+          if(!visible)console.warn("Opened trade is visible locally; server list sync is delayed",openedTradeId);
+        }).catch(error=>console.warn("Opened trade background sync failed",error));
+      }else{
+        const visible=await refreshOpenedTradeUntilVisible(openedTradeId);
+        if(visible)message($("terminalMessage"),"تم فتح العقد وظهر مباشرةً ضمن عقودك المفتوحة.", "success");
+        else message($("terminalMessage"),"تم فتح العقد وحجز الهامش، لكن تعذر تحديث قائمة العقود الآن. لا تعِد فتح العقد.", "error");
+      }
     }else await loadPaperMarket();
   }catch(e){message($("terminalMessage"),e.message,"error");}finally{b.disabled=false;}});
 
