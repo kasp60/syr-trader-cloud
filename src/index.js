@@ -586,7 +586,7 @@ const walletApi = async (request, env, url) => {
     if (!requireSameOrigin(request,url)) return json({ok:false,error:"طلب غير موثوق"},403);
     if (!env.MARKET_STREAM) return json({ok:false,error:"خدمة الأسعار اللحظية غير متاحة"},503);
     const id=env.MARKET_STREAM.idFromName("market");
-    return env.MARKET_STREAM.get(id).fetch(new Request("https://market-stream.internal/connect",request));
+    return env.MARKET_STREAM.get(id).fetch(request);
   }
 
   if (url.pathname === "/api/market/quotes" && request.method === "GET") {
