@@ -1570,7 +1570,7 @@ const authApi = async (request, env, url) => {
        WHERE w.user_id = ? AND a.symbol IN ('SYP','USD') ORDER BY CASE a.symbol WHEN 'SYP' THEN 1 ELSE 2 END`
     ).bind(user.id).all();
     const rates = await env.DB.prepare(
-      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
+      "SELECT base_symbol AS baseSymbol, quote_symbol AS quoteSymbol, COALESCE((SELECT target_price_micro/1000000.0 FROM market_price_targets WHERE instrument_id='syr-usd-syp'),rate) AS rate, updated_at AS updatedAt FROM exchange_rates WHERE base_symbol='USD' AND quote_symbol='SYP' LIMIT 1"
     ).first();
     const member=await env.DB.prepare("SELECT code FROM member_codes WHERE user_id=?").bind(user.id).first();
     return json({
