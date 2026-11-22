@@ -50,7 +50,8 @@ export class MarketStream extends DurableObject {
   }
 
   webSocketClose(socket, code, reason) {
-    if (code >= 1000 && code < 5000 && ![1004, 1005, 1006, 1015].includes(code)) {
+    if (code === 1006) return;
+    if (code >= 1000 && code < 5000 && ![1004, 1005, 1015].includes(code)) {
       socket.close(code, reason);
     } else {
       socket.close();
