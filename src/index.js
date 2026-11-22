@@ -784,10 +784,10 @@ const walletApi = async (request, env, url) => {
     if(!exists)return json({ok:false,error:"الأداة غير موجودة"},404);
     if(exists.symbol==="USD/SYP"){
       const bounds=await getReserveReferenceBounds(env.DB);
-      const lower=BigInt(Math.max(1,Math.floor(bounds.minReference)))-25_000_000n;
-      const upper=BigInt(Math.ceil(bounds.maxReference))+25_000_000n;
+      const lower=BigInt(Math.max(1,Math.floor(bounds.minReference)))-BigInt(MARKET_MAX_DEVIATION_MICRO);
+      const upper=BigInt(Math.ceil(bounds.maxReference))+BigInt(MARKET_MAX_DEVIATION_MICRO);
       if(BigInt(priceMicro)<(lower>0n?lower:1n)||BigInt(priceMicro)>upper)
-        return json({ok:false,error:"السعر اليدوي يجب أن يبقى ضمن نطاق ±25 من السعر المرجعي الذي حددته الإدارة."},409);
+        return json({ok:false,error:"السعر اليدوي يجب أن يبقى ضمن نطاق ±0.5 ليرة من السعر المرجعي الذي حددته الإدارة."},409);
     }
     const previousRow=await env.DB.prepare("SELECT price_micro AS priceMicro FROM market_prices WHERE instrument_id=?").bind(instrumentId).first();
     const previousPriceMicro=Number(previousRow?.priceMicro||0);
@@ -841,7 +841,7 @@ const walletApi = async (request, env, url) => {
     const reserve=await env.DB.prepare("SELECT balance_minor AS balanceMinor,required_minor AS requiredMinor,reserved_minor AS reservedMinor,deficit_minor AS deficitMinor FROM platform_reserve_balances WHERE asset_symbol=?").bind(marginAssetSymbol).first();
     const balance=BigInt(reserve?.balanceMinor||0),required=BigInt(reserve?.requiredMinor||0),reserved=BigInt(reserve?.reservedMinor||0);
     if(required+lock>balance||reserved!==(required<balance?required:balance)||BigInt(reserve?.deficitMinor||0)>0n)
-      return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±25. يلزم تمويل الاحتياطي أولاً."},409);
+      return json({ok:false,error:"لا يمكن فتح الصفقة حالياً: احتياطي المنصة غير كافٍ لتغطية أقصى ربح محتمل ضمن نطاق السعر ±0.5 ليرة. يلزم تمويل الاحتياطي أولاً."},409);
     const quantityMicro=Number(quantityBig),marginCents=Number(marginMinor),reserveLock=Number(lock);
     const liquidationPriceMicro=Number((direction==="long"?entry*BigInt(leverage-1)/BigInt(leverage):entry*BigInt(leverage+1)/BigInt(leverage))||1n);
     const now=new Date().toISOString(),tradeId=crypto.randomUUID();
@@ -1063,7 +1063,7 @@ const walletApi = async (request, env, url) => {
       env.DB.prepare("INSERT INTO market_bots(instrument_id,enabled,volatility_bps,drift_bps,updated_by,updated_at) SELECT 'syr-usd-syp',1,80,0,?,? WHERE changes()=1 ON CONFLICT(instrument_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(user.id,now),
       env.DB.prepare("INSERT INTO exchange_rates(id,base_symbol,quote_symbol,rate,updated_by,updated_at) SELECT 'usd-syp','USD','SYP',?,?,? WHERE changes()=1 ON CONFLICT(base_symbol,quote_symbol) DO UPDATE SET rate=excluded.rate,updated_by=excluded.updated_by,updated_at=excluded.updated_at").bind(fromPriceMicro/1000000,user.id,now)
     ]);
-    if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±25. موّل الاحتياطي أولاً."},409);
+    if(!changes?.[1]?.meta?.changes)return json({ok:false,error:"لا يمكن اعتماد السعر الجديد: الاحتياطي لا يغطي الأرباح القصوى المحتملة للصفقات المفتوحة ضمن نطاق ±0.5 ليرة. موّل الاحتياطي أولاً."},409);
     const bot=await env.DB.prepare("SELECT enabled FROM market_bots WHERE instrument_id='syr-usd-syp'").first();
     return json({ok:true,targetRate:rate,fromPrice:Number(fromPriceMicro)/1000000,transitionMinutes,botEnabled:true});
   }
