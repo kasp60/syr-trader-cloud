@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { marketQuote } from "./reserve-risk.js";
 
 export class MarketStream extends DurableObject {
   async fetch(request) {
@@ -26,7 +27,11 @@ export class MarketStream extends DurableObject {
           priceMicro <= 0 || !Number.isFinite(Date.parse(updatedAt))) {
         return new Response("Invalid market update", { status: 400 });
       }
-      const message = JSON.stringify({ type: "market_price", instrumentId, priceMicro, updatedAt });
+      const message = JSON.stringify({
+        type: "market_price", instrumentId, priceMicro, updatedAt,
+        bidPriceMicro: Number(marketQuote(priceMicro, "bid")),
+        askPriceMicro: Number(marketQuote(priceMicro, "ask"))
+      });
       let sent = 0;
       for (const socket of this.ctx.getWebSockets()) {
         try {
